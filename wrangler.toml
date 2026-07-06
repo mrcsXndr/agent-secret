@@ -1,0 +1,23 @@
+# agent-secret — Cloudflare Worker config
+#
+# Before deploying:
+#   1. wrangler kv namespace create SECRETS        -> paste the id below
+#   2. node -e "console.log(crypto.randomBytes(32).toString('base64'))" | wrangler secret put MASTER_KEY
+#   3. wrangler deploy
+#
+# For local dev, create .dev.vars (see .dev.vars.example) and run: npm run dev
+
+name = "agent-secret"
+main = "src/worker/index.ts"
+compatibility_date = "2026-06-01"
+
+[[kv_namespaces]]
+binding = "SECRETS"
+id = "YOUR_KV_NAMESPACE_ID"
+
+[vars]
+# Requests per minute per IP across /secret* endpoints (create/claim/meta/burn).
+RATE_LIMIT_PER_MIN = "30"
+
+# MASTER_KEY is a secret, not a var — set it with `wrangler secret put MASTER_KEY`.
+# It must be 32 random bytes, base64-encoded.
