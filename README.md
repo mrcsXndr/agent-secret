@@ -77,7 +77,23 @@ Tip: the `put NAME - < file` / pipe form keeps the value out of your shell histo
 
 ### 3. Add the MCP server to your agent
 
-Claude Code:
+> **Not on npm yet.** Until `agent-secret` is published, run the MCP server from your built checkout: `npm run build` once, then point the command at `dist/mcp/server.js` (absolute path). The npm/`npx` forms below light up the moment it's published.
+
+**From your checkout (works today):**
+
+```json
+{
+  "mcpServers": {
+    "agent-secret": {
+      "command": "node",
+      "args": ["/absolute/path/to/agent-secret/dist/mcp/server.js"],
+      "env": { "AGENT_SECRET_URL": "https://agent-secret.<you>.workers.dev" }
+    }
+  }
+}
+```
+
+**Once published to npm** — Claude Code:
 
 ```bash
 claude mcp add agent-secret \
@@ -128,7 +144,7 @@ agent-secret burn CODE                                       destroy without cla
 ## Security model
 
 - **Encrypted at rest** — AES-256-GCM via Web Crypto before the value touches KV. Key derived per-secret (random salt + IV) from a `MASTER_KEY` that lives only in Worker secrets, so a KV data leak alone exposes nothing. The stored name is encrypted too.
-- **Optional passphrase** — a second factor. It's mixed into the key derivation (PBKDF2-SHA256, 100k iterations), so a wrong passphrase simply fails decryption; nothing passphrase-derived is stored. Five wrong attempts destroy the secret. Share the passphrase out-of-band (not in the same chat as the code).
+- **Optional passphrase (you rarely need it)** — off by default and safe to ignore. Single-use + a short TTL already make an intercepted code near-worthless, so a passphrase only earns its keep in one case: the claim code leaks *and* an attacker claims it inside the TTL window before your agent does (e.g. a shared chat log claimed within minutes). When you do use it, it's mixed into the key derivation (PBKDF2-SHA256, 100k iterations) — a wrong passphrase just fails decryption; nothing passphrase-derived is stored, and five wrong attempts destroy the secret. Share it out-of-band, not in the same chat as the code.
 - **Single-use + TTL** — burns on first claim; expires at TTL (default 10 min, max 24h) regardless.
 - **Rate limiting** — per-IP, per-minute across all `/secret*` routes (default 30/min, `RATE_LIMIT_PER_MIN` var) against code enumeration and passphrase guessing.
 - **Codes** — 8 chars from a confusable-free alphabet ≈ 2^39 space; combined with rate limits and short TTLs, online guessing is not practical.
