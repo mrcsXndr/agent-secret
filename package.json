@@ -1,35 +1,20 @@
 {
   "name": "agent-secret",
-  "version": "0.1.0",
-  "description": "One-time secret share built for AI agents — hand the chat a claim code, never the secret.",
+  "version": "1.0.0",
+  "description": "Zero-knowledge one-time secret share for AI agents — encrypt in the browser, hand your agent a self-destructing claim link, the server never sees the plaintext.",
   "type": "module",
   "license": "MIT",
   "engines": {
     "node": ">=20"
   },
-  "bin": {
-    "agent-secret": "dist/cli/index.js",
-    "agent-secret-mcp": "dist/mcp/server.js"
-  },
-  "files": [
-    "dist",
-    "src",
-    "wrangler.toml",
-    "README.md",
-    "LICENSE"
-  ],
   "scripts": {
-    "build": "tsc -p tsconfig.build.json",
     "typecheck": "tsc --noEmit",
     "test": "vitest run",
     "dev": "wrangler dev",
-    "deploy": "wrangler deploy",
-    "prepack": "npm run build"
+    "deploy": "wrangler deploy"
   },
   "dependencies": {
-    "@modelcontextprotocol/sdk": "^1.12.0",
-    "hono": "^4.6.0",
-    "zod": "^3.24.1"
+    "hono": "^4.6.0"
   },
   "devDependencies": {
     "@types/node": "^22.10.0",
@@ -40,7 +25,8 @@
   "keywords": [
     "secrets",
     "one-time",
-    "mcp",
+    "zero-knowledge",
+    "end-to-end-encryption",
     "ai-agents",
     "cloudflare-workers",
     "credentials"

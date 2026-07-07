@@ -1,5 +1,4 @@
 import { Hono } from "hono";
-import { encrypt, decrypt, type EncryptedPayload } from "./crypto.js";
 import { generateCode, normalizeCode } from "./codes.js";
 import { FORM_HTML } from "./form.js";
 
@@ -13,28 +12,30 @@ export interface KV {
 
 export interface Bindings {
   SECRETS: KV;
-  MASTER_KEY: string;
   RATE_LIMIT_PER_MIN?: string;
 }
 
 export const DEFAULT_TTL_S = 600; // 10 minutes
 export const MIN_TTL_S = 60;
 export const MAX_TTL_S = 86_400; // 24 hours
-export const MAX_VALUE_BYTES = 16_384;
-export const MAX_PASSPHRASE_ATTEMPTS = 5;
+// The server stores only ciphertext. A 16 KiB plaintext becomes ~22 KiB of
+// base64; 48 KiB leaves generous headroom without inviting KV abuse.
+export const MAX_BLOB_BYTES = 49_152;
 
+// A stored secret is opaque ciphertext + nonce. The encryption key lives ONLY
+// in the sharer's copy block and never reaches this server — so nothing here,
+// nor a full KV dump, can recover a plaintext secret. That is the whole point.
 interface LiveRecord {
-  v: 1;
+  v: 2;
   claimed: false;
-  enc: EncryptedPayload;
-  hasPassphrase: boolean;
+  ct: string; // base64 AES-256-GCM ciphertext (tag appended), encrypted client-side
+  iv: string; // base64 12-byte nonce
   createdAt: number; // epoch ms
   expiresAt: number; // epoch ms
-  attempts: number;
 }
 
 interface Tombstone {
-  v: 1;
+  v: 2;
   claimed: true;
   claimedAt: number;
   expiresAt: number;
@@ -47,13 +48,17 @@ const secretKey = (code: string) => `secret:${code}`;
 /** KV expirationTtl must be >= 60s; add a buffer so the logical expiresAt check fires first. */
 const kvTtl = (ttlSeconds: number) => Math.max(ttlSeconds, MIN_TTL_S) + 60;
 
+// Loose base64 shape check (std or url-safe alphabet). Content is opaque to us.
+const isB64 = (s: unknown): s is string =>
+  typeof s === "string" && s.length > 0 && /^[A-Za-z0-9+/_-]+={0,2}$/.test(s);
+
 const app = new Hono<{ Bindings: Bindings }>();
 
 // ---------------------------------------------------------------- rate limit
 // Fixed-window per-IP counter in KV. Coarse but effective against code
-// enumeration and passphrase brute force; applies to all /secret* routes.
+// enumeration; applies to all /s* routes.
 app.use("*", async (c, next) => {
-  if (!c.req.path.startsWith("/secret")) return next();
+  if (!c.req.path.startsWith("/s")) return next();
   const limit = Number.parseInt(c.env.RATE_LIMIT_PER_MIN ?? "30", 10) || 30;
   const ip = c.req.header("cf-connecting-ip") ?? "unknown";
   const windowKey = `rl:${ip}:${Math.floor(Date.now() / 60_000)}`;
@@ -66,20 +71,19 @@ app.use("*", async (c, next) => {
 });
 
 // --------------------------------------------------------------------- create
-app.post("/secret", async (c) => {
-  if (!c.env.MASTER_KEY) {
-    return c.json({ error: "server_misconfigured", message: "MASTER_KEY secret is not set." }, 500);
-  }
+// Accepts ONLY ciphertext. The client encrypts before this call; the server
+// never sees a plaintext secret, a name, or the key.
+app.post("/s", async (c) => {
   const body = await c.req.json().catch(() => null);
-  if (!body || typeof body.value !== "string" || body.value.length === 0) {
-    return c.json({ error: "bad_request", message: "Body must include a non-empty string `value`." }, 400);
+  if (!body || !isB64(body.ct) || !isB64(body.iv)) {
+    return c.json(
+      { error: "bad_request", message: "Body must include base64 `ct` (ciphertext) and `iv` (nonce)." },
+      400,
+    );
   }
-  if (new TextEncoder().encode(body.value).length > MAX_VALUE_BYTES) {
-    return c.json({ error: "too_large", message: `value exceeds ${MAX_VALUE_BYTES} bytes.` }, 413);
+  if (body.ct.length + body.iv.length > MAX_BLOB_BYTES) {
+    return c.json({ error: "too_large", message: `Encrypted payload exceeds ${MAX_BLOB_BYTES} bytes.` }, 413);
   }
-  const name = typeof body.name === "string" && body.name.length > 0 ? body.name.slice(0, 128) : undefined;
-  const passphrase =
-    typeof body.passphrase === "string" && body.passphrase.length > 0 ? body.passphrase : undefined;
 
   let ttl = DEFAULT_TTL_S;
   if (body.ttl !== undefined) {
@@ -98,15 +102,13 @@ app.post("/secret", async (c) => {
 
   const now = Date.now();
   const expiresAt = now + ttl * 1000;
-  const enc = await encrypt(c.env.MASTER_KEY, JSON.stringify({ name, value: body.value }), passphrase);
   const record: LiveRecord = {
-    v: 1,
+    v: 2,
     claimed: false,
-    enc,
-    hasPassphrase: passphrase !== undefined,
+    ct: body.ct,
+    iv: body.iv,
     createdAt: now,
     expiresAt,
-    attempts: 0,
   };
   await c.env.SECRETS.put(secretKey(code), JSON.stringify(record), { expirationTtl: kvTtl(ttl) });
 
@@ -114,7 +116,10 @@ app.post("/secret", async (c) => {
 });
 
 // ---------------------------------------------------------------------- claim
-app.post("/secret/:code/claim", async (c) => {
+// A single GET returns the ciphertext and burns the secret. The caller decrypts
+// locally with the key from the copy block — the server hands back only opaque
+// bytes and can never assist decryption.
+app.get("/s/:code", async (c) => {
   const code = normalizeCode(c.req.param("code"));
   if (!code) return c.json({ error: "bad_request", message: "Malformed claim code." }, 400);
 
@@ -131,48 +136,18 @@ app.post("/secret/:code/claim", async (c) => {
     return c.json({ error: "expired", message: "This secret has expired." }, 410);
   }
 
-  const body = (await c.req.json().catch(() => null)) ?? {};
-  const passphrase =
-    typeof body.passphrase === "string" && body.passphrase.length > 0 ? body.passphrase : undefined;
-
-  if (record.hasPassphrase && !passphrase) {
-    return c.json({ error: "passphrase_required", message: "This secret requires a passphrase." }, 401);
-  }
-
-  let plaintext: string;
-  try {
-    plaintext = await decrypt(c.env.MASTER_KEY, record.enc, record.hasPassphrase ? passphrase : undefined);
-  } catch {
-    record.attempts += 1;
-    if (record.attempts >= MAX_PASSPHRASE_ATTEMPTS) {
-      await c.env.SECRETS.delete(secretKey(code));
-      return c.json(
-        { error: "burned", message: "Too many wrong passphrase attempts; the secret has been destroyed." },
-        401,
-      );
-    }
-    const remainingTtl = Math.ceil((record.expiresAt - Date.now()) / 1000);
-    await c.env.SECRETS.put(secretKey(code), JSON.stringify(record), { expirationTtl: kvTtl(remainingTtl) });
-    return c.json(
-      {
-        error: "wrong_passphrase",
-        message: `Wrong passphrase (${MAX_PASSPHRASE_ATTEMPTS - record.attempts} attempts left).`,
-      },
-      401,
-    );
-  }
-
-  // Burn: replace with a tombstone so meta can report claimed=true until the original expiry.
-  const tombstone: Tombstone = { v: 1, claimed: true, claimedAt: Date.now(), expiresAt: record.expiresAt };
+  // Burn first: replace with a tombstone before returning, so a duplicate
+  // in-flight request cannot read the same ciphertext twice.
+  const tombstone: Tombstone = { v: 2, claimed: true, claimedAt: Date.now(), expiresAt: record.expiresAt };
   const remainingTtl = Math.ceil((record.expiresAt - Date.now()) / 1000);
   await c.env.SECRETS.put(secretKey(code), JSON.stringify(tombstone), { expirationTtl: kvTtl(remainingTtl) });
 
-  const payload = JSON.parse(plaintext) as { name?: string; value: string };
-  return c.json({ name: payload.name, value: payload.value });
+  return c.json({ ct: record.ct, iv: record.iv });
 });
 
 // ----------------------------------------------------------------------- meta
-app.get("/secret/:code/meta", async (c) => {
+// Lifecycle only — never any ciphertext. Safe to poll.
+app.get("/s/:code/meta", async (c) => {
   const code = normalizeCode(c.req.param("code"));
   if (!code) return c.json({ error: "bad_request", message: "Malformed claim code." }, 400);
 
@@ -191,13 +166,12 @@ app.get("/secret/:code/meta", async (c) => {
   return c.json({
     exists: true,
     claimed: false,
-    hasPassphrase: record.hasPassphrase,
     expiresAt: new Date(record.expiresAt).toISOString(),
   });
 });
 
 // ----------------------------------------------------------------------- burn
-app.delete("/secret/:code", async (c) => {
+app.delete("/s/:code", async (c) => {
   const code = normalizeCode(c.req.param("code"));
   if (!code) return c.json({ error: "bad_request", message: "Malformed claim code." }, 400);
   await c.env.SECRETS.delete(secretKey(code));

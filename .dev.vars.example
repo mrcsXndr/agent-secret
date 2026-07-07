@@ -1,4 +1,0 @@
-# Copy to .dev.vars for `npm run dev` (never commit .dev.vars).
-# Generate a real key: node -e "console.log(crypto.randomBytes(32).toString('base64'))"
-MASTER_KEY=REPLACE_WITH_BASE64_32_BYTES
-RATE_LIMIT_PER_MIN=30

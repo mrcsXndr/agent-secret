@@ -1,13 +1,15 @@
-// Tiny self-contained web form served at GET / — for humans who prefer a
-// browser over the CLI. Posts to /secret and shows the claim code.
-// No external assets: all CSS/JS/SVG is inline so it works on a bare Worker.
+// Self-contained web form served at GET /. All encryption happens HERE, in the
+// browser: a random AES-256-GCM key is generated, the secret is encrypted, and
+// only the ciphertext is POSTed to /s. The key never leaves this page — it is
+// baked into the copy block the human hands their agent. The server is
+// zero-knowledge by construction. No external assets: all CSS/JS/SVG is inline.
 
 export const FORM_HTML = `<!doctype html>
 <html lang="en">
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
-<title>agent-secret — share a secret with your AI agent</title>
+<title>agent-secret — hand a secret to your AI agent, safely</title>
 <style>
   :root{
     --bg:#07070b; --bg2:#0e0e16; --card:#12121c; --card2:#171724;
@@ -33,7 +35,7 @@ export const FORM_HTML = `<!doctype html>
     display:flex; align-items:flex-start; justify-content:center;
     padding:clamp(1rem,4vw,3.5rem) 1rem;
   }
-  .wrap{width:100%; max-width:30rem}
+  .wrap{width:100%; max-width:32rem}
   .brand{display:flex; align-items:center; gap:.7rem; margin-bottom:.35rem}
   .mark{
     width:2.35rem; height:2.35rem; flex:0 0 auto; border-radius:11px;
@@ -61,12 +63,6 @@ export const FORM_HTML = `<!doctype html>
   input:focus,textarea:focus,select:focus{border-color:var(--accent); box-shadow:0 0 0 3px #7c6cff33}
   textarea{min-height:5rem; resize:vertical; font-family:ui-monospace,SFMono-Regular,Menlo,monospace; font-size:.9rem}
   select{appearance:none; background-image:url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='16' height='16' viewBox='0 0 24 24' fill='none' stroke='%239a9aab' stroke-width='2.5'%3E%3Cpath d='M6 9l6 6 6-6'/%3E%3C/svg%3E"); background-repeat:no-repeat; background-position:right .8rem center; padding-right:2.4rem; cursor:pointer}
-  details{margin:-.2rem 0 1rem; border-top:1px solid var(--line); padding-top:.9rem}
-  summary{cursor:pointer; color:var(--muted); font-size:.85rem; font-weight:600; list-style:none; display:flex; align-items:center; gap:.4rem; user-select:none}
-  summary::-webkit-details-marker{display:none}
-  summary .chev{transition:transform .15s; color:var(--faint)}
-  details[open] summary .chev{transform:rotate(90deg)}
-  details .fld{margin-top:.85rem; margin-bottom:.2rem}
   .btn{
     width:100%; padding:.8rem; font:inherit; font-weight:700; cursor:pointer;
     color:var(--accentInk); border:0; border-radius:11px;
@@ -82,19 +78,26 @@ export const FORM_HTML = `<!doctype html>
   /* result */
   #result{display:none; animation:rise .35s ease both}
   @keyframes rise{from{opacity:0; transform:translateY(10px)}to{opacity:1; transform:none}}
-  .rlabel{font-size:.78rem; text-transform:uppercase; letter-spacing:.08em; color:var(--muted); font-weight:700; margin-bottom:.55rem}
-  .coderow{display:flex; align-items:center; gap:.6rem; background:var(--bg2); border:1px solid var(--line2); border-radius:12px; padding:.7rem .7rem .7rem 1rem}
-  #code{flex:1; font-family:ui-monospace,SFMono-Regular,Menlo,monospace; font-size:1.75rem; font-weight:750; letter-spacing:.06em; color:var(--txt)}
-  .copy{flex:0 0 auto; display:inline-flex; align-items:center; gap:.35rem; padding:.5rem .7rem; font-size:.82rem; font-weight:650; cursor:pointer; color:var(--txt); background:var(--card2); border:1px solid var(--line2); border-radius:9px; transition:.15s}
-  .copy:hover{border-color:var(--accent); color:var(--accent2)}
-  .copy.done{color:var(--good); border-color:#34d39955}
-  .meta{color:var(--muted); font-size:.82rem; margin:.75rem 0 1.25rem}
+  .rlabel{font-size:.78rem; text-transform:uppercase; letter-spacing:.08em; color:var(--muted); font-weight:700; margin-bottom:.55rem; display:flex; align-items:center; gap:.4rem}
+  .rlabel .lbl{display:inline-flex; align-items:center; gap:.4rem; flex:1; min-width:0}
+  .rlabel .zk{color:var(--accent2); font-weight:700}
+  .blockbox{background:var(--bg2); border:1px solid var(--line2); border-radius:12px}
+  .blockbox pre{
+    margin:0; padding:1rem; overflow-x:auto;
+    font-family:ui-monospace,SFMono-Regular,Menlo,monospace; font-size:.8rem;
+    line-height:1.6; color:var(--txt); white-space:pre; tab-size:2;
+  }
+  .copyblock{
+    flex:0 0 auto; display:inline-flex; align-items:center; gap:.35rem; text-transform:none; letter-spacing:0;
+    padding:.4rem .7rem; font-size:.78rem; font-weight:700; cursor:pointer; color:var(--accentInk);
+    background:linear-gradient(140deg,var(--accent),var(--accent2)); border:0; border-radius:9px;
+    box-shadow:0 6px 16px #7c6cff40; transition:.15s;
+  }
+  .copyblock:hover{filter:brightness(1.07)}
+  .copyblock.done{background:linear-gradient(140deg,#34d399,#10b981); box-shadow:0 6px 16px #34d39940}
+  .meta{color:var(--muted); font-size:.82rem; margin:.9rem 0 1.2rem; text-align:center}
   .meta b{color:var(--txt); font-weight:600}
-  .tellbox{background:var(--bg2); border:1px solid var(--line2); border-radius:12px; padding:.9rem 1rem}
-  .tellbox .rlabel{margin-bottom:.5rem}
-  .tellrow{display:flex; align-items:flex-start; gap:.6rem}
-  #tell{flex:1; font-family:ui-monospace,SFMono-Regular,Menlo,monospace; font-size:.86rem; color:var(--txt); word-break:break-word}
-  .again{margin-top:1.15rem; width:100%; padding:.7rem; font:inherit; font-weight:650; cursor:pointer; color:var(--muted); background:transparent; border:1px solid var(--line2); border-radius:11px; transition:.15s}
+  .again{width:100%; padding:.7rem; font:inherit; font-weight:650; cursor:pointer; color:var(--muted); background:transparent; border:1px solid var(--line2); border-radius:11px; transition:.15s}
   .again:hover{color:var(--txt); border-color:var(--accent)}
   .foot{text-align:center; color:var(--faint); font-size:.75rem; margin-top:1.3rem}
   .foot a{color:var(--muted); text-decoration:none} .foot a:hover{color:var(--accent2)}
@@ -108,7 +111,7 @@ export const FORM_HTML = `<!doctype html>
     </div>
     <h1>agent-secret</h1>
   </div>
-  <p class="tag">Paste the <em>claim code</em> into your agent chat — never the secret itself.</p>
+  <p class="tag">Encrypt a secret <em>in your browser</em>, get a one-shot instruction to paste to your AI agent. The server never sees it.</p>
 
   <div class="card">
     <form id="f">
@@ -129,48 +132,29 @@ export const FORM_HTML = `<!doctype html>
           <option value="86400">24 hours</option>
         </select>
       </div>
-      <details>
-        <summary><span class="chev">&#9656;</span> Advanced</summary>
-        <div class="fld">
-          <label for="pass">Passphrase <span class="hintlabel">— optional; you rarely need this</span></label>
-          <input id="pass" type="password" placeholder="Extra factor at claim time" autocomplete="new-password">
-        </div>
-      </details>
-      <button class="btn" id="submit" type="submit">Create claim code</button>
+      <button class="btn" id="submit" type="submit">Encrypt &amp; create link</button>
       <div class="err" id="err"></div>
     </form>
 
     <div id="result">
-      <div class="rlabel">Claim code</div>
-      <div class="coderow">
-        <span id="code"></span>
-        <button class="copy" id="copyCode" type="button" aria-label="Copy claim code">
-          <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="9" y="9" width="13" height="13" rx="2"/><path d="M5 15V5a2 2 0 012-2h10"/></svg>
+      <div class="rlabel">
+        <span class="lbl">Paste this to your agent <span class="zk">· E2E encrypted</span></span>
+        <button class="copyblock" id="copyBlock" type="button">
+          <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="9" y="9" width="13" height="13" rx="2"/><path d="M5 15V5a2 2 0 012-2h10"/></svg>
           <span>Copy</span>
         </button>
       </div>
-      <p class="meta">&#128293; Single-use — burns on first claim &nbsp;·&nbsp; &#9201; Expires <b id="exp"></b></p>
-
-      <div class="tellbox">
-        <div class="tellrow">
-          <div style="flex:1">
-            <div class="rlabel">Tell your agent</div>
-            <div id="tell"></div>
-          </div>
-          <button class="copy" id="copyTell" type="button" aria-label="Copy instruction">
-            <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="9" y="9" width="13" height="13" rx="2"/><path d="M5 15V5a2 2 0 012-2h10"/></svg>
-            <span>Copy</span>
-          </button>
-        </div>
+      <div class="blockbox">
+        <pre id="block"></pre>
       </div>
-
+      <p class="meta">&#128293; Single-use — burns on first fetch &nbsp;·&nbsp; &#9201; Expires <b id="exp"></b></p>
       <button class="again" id="again" type="button">Share another secret</button>
     </div>
 
     <div class="trust" id="trust">
-      <span>&#128274; Encrypted at rest</span>
+      <span>&#128274; Encrypted in your browser</span>
+      <span>&#128064; Server can't read it</span>
       <span>&#128293; Single-use</span>
-      <span>&#9201; Auto-expires</span>
     </div>
   </div>
 
@@ -182,17 +166,51 @@ export const FORM_HTML = `<!doctype html>
   var $ = function(id){ return document.getElementById(id); };
   var form = $('f'), result = $('result'), trust = $('trust'), submit = $('submit'), err = $('err');
 
+  function b64(buf){
+    var u = new Uint8Array(buf), s = '';
+    for (var i = 0; i < u.length; i++) s += String.fromCharCode(u[i]);
+    return btoa(s);
+  }
+  function b64url(buf){ return b64(buf).replace(/\\+/g,'-').replace(/\\//g,'_').replace(/=+$/,''); }
+
+  // Build the self-contained instruction an agent needs — code + key + a
+  // ready-to-run decrypt. The key is embedded here and NOWHERE else.
+  function buildBlock(origin, code, key, name){
+    var url = origin + '/s/' + code;
+    var oneLiner =
+      'node -e \\'const c=require("crypto");fetch("' + url + '").then(r=>r.json()).then(function(o){' +
+      'if(o.error)throw new Error(o.error);' +
+      'var k=Buffer.from("' + key + '","base64url"),C=Buffer.from(o.ct,"base64"),' +
+      'd=c.createDecipheriv("aes-256-gcm",k,Buffer.from(o.iv,"base64"));' +
+      'd.setAuthTag(C.subarray(C.length-16));' +
+      'var p=JSON.parse(Buffer.concat([d.update(C.subarray(0,C.length-16)),d.final()]).toString());' +
+      'console.log(p.name?p.name+"="+p.value:p.value)})\\'';
+    var what = name ? 'the value of ' + name : 'your secret';
+    return [
+      "You've been handed a one-time secret via agent-secret (" + origin + ").",
+      "Zero-knowledge: the server stored only ciphertext and cannot read it — the key is in this message, held only by you.",
+      "",
+      "Retrieve + decrypt in one shot (Node). This is the ONLY read — the fetch destroys it server-side:",
+      "",
+      "  " + oneLiner,
+      "",
+      "It prints " + what + ". Any runtime works: GET " + url + " returns {\\"ct\\",\\"iv\\"} (base64);",
+      "decrypt with AES-256-GCM using key (base64url): " + key,
+      "",
+      "Save it straight to your secret store. Don't echo it back, and don't fetch again — it's already gone."
+    ].join("\\n");
+  }
+
   function copyBtn(btn, getText){
     btn.addEventListener('click', function(){
       navigator.clipboard.writeText(getText()).then(function(){
         var lbl = btn.querySelector('span'); var prev = lbl.textContent;
         btn.classList.add('done'); lbl.textContent = 'Copied';
-        setTimeout(function(){ btn.classList.remove('done'); lbl.textContent = prev; }, 1400);
+        setTimeout(function(){ btn.classList.remove('done'); lbl.textContent = prev; }, 1500);
       });
     });
   }
-  copyBtn($('copyCode'), function(){ return $('code').textContent; });
-  copyBtn($('copyTell'), function(){ return $('tell').textContent; });
+  copyBtn($('copyBlock'), function(){ return $('block').textContent; });
 
   $('again').addEventListener('click', function(){
     result.style.display = 'none';
@@ -204,26 +222,34 @@ export const FORM_HTML = `<!doctype html>
     e.preventDefault();
     err.textContent = '';
     var name = $('name').value.trim();
-    var body = { value: $('value').value, ttl: Number($('ttl').value) };
-    if (name) body.name = name;
-    var pass = $('pass').value;
-    if (pass) body.passphrase = pass;
+    var value = $('value').value;
+    if (!value) { err.textContent = 'Enter a secret value.'; return; }
 
-    submit.disabled = true; submit.textContent = 'Creating…';
+    submit.disabled = true; submit.textContent = 'Encrypting…';
     try {
-      var res = await fetch('/secret', { method:'POST', headers:{'content-type':'application/json'}, body: JSON.stringify(body) });
+      // Encrypt client-side. The key is generated here and never sent anywhere.
+      var rawKey = crypto.getRandomValues(new Uint8Array(32));
+      var key = await crypto.subtle.importKey('raw', rawKey, { name:'AES-GCM' }, false, ['encrypt']);
+      var iv = crypto.getRandomValues(new Uint8Array(12));
+      var plaintext = new TextEncoder().encode(JSON.stringify(name ? { name:name, value:value } : { value:value }));
+      var ctBuf = await crypto.subtle.encrypt({ name:'AES-GCM', iv:iv }, key, plaintext);
+
+      var res = await fetch('/s', {
+        method:'POST', headers:{'content-type':'application/json'},
+        body: JSON.stringify({ ct: b64(ctBuf), iv: b64(iv), ttl: Number($('ttl').value) })
+      });
       var data = await res.json();
       if (!res.ok) { err.textContent = data.message || data.error || ('HTTP ' + res.status); return; }
-      $('code').textContent = data.code;
+
       $('exp').textContent = new Date(data.expiresAt).toLocaleString();
-      $('tell').textContent = 'Claim secret ' + data.code + ' with agent-secret and save it to .env' + (name ? ' as ' + name : '');
+      $('block').textContent = buildBlock(location.origin, data.code, b64url(rawKey), name);
       form.style.display = 'none'; trust.style.display = 'none';
       result.style.display = 'block';
-      $('value').value = ''; $('pass').value = '';
+      $('value').value = '';
     } catch (ex) {
       err.textContent = String(ex);
     } finally {
-      submit.disabled = false; submit.textContent = 'Create claim code';
+      submit.disabled = false; submit.textContent = 'Encrypt & create link';
     }
   });
 })();

@@ -27,10 +27,8 @@ export class MemoryKV implements KV {
 }
 
 export function makeEnv(overrides: Partial<Bindings> = {}): Bindings {
-  const master = crypto.getRandomValues(new Uint8Array(32));
   return {
     SECRETS: new MemoryKV(),
-    MASTER_KEY: Buffer.from(master).toString("base64"),
     RATE_LIMIT_PER_MIN: "10000", // effectively off unless a test overrides it
     ...overrides,
   };
@@ -42,4 +40,38 @@ export function json(body: unknown): RequestInit {
     headers: { "content-type": "application/json" },
     body: JSON.stringify(body),
   };
+}
+
+// --- client-side crypto mirror (what the browser form does) -----------------
+// The real encryption lives in form.ts as inline browser JS; this reproduces it
+// with the same WebCrypto primitives so tests can prove the full E2E round-trip
+// (encrypt here → POST ciphertext → GET ciphertext → decrypt here).
+
+const b64 = (buf: ArrayBuffer | Uint8Array): string =>
+  Buffer.from(buf instanceof Uint8Array ? buf : new Uint8Array(buf)).toString("base64");
+
+export async function clientEncrypt(
+  payload: { name?: string; value: string },
+): Promise<{ ct: string; iv: string; keyB64url: string }> {
+  const rawKey = crypto.getRandomValues(new Uint8Array(32));
+  const key = await crypto.subtle.importKey("raw", rawKey, { name: "AES-GCM" }, false, ["encrypt"]);
+  const iv = crypto.getRandomValues(new Uint8Array(12));
+  const pt = new TextEncoder().encode(JSON.stringify(payload));
+  const ct = await crypto.subtle.encrypt({ name: "AES-GCM", iv }, key, pt);
+  return { ct: b64(ct), iv: b64(iv), keyB64url: Buffer.from(rawKey).toString("base64url") };
+}
+
+export async function clientDecrypt(
+  ct: string,
+  iv: string,
+  keyB64url: string,
+): Promise<{ name?: string; value: string }> {
+  const rawKey = Buffer.from(keyB64url, "base64url");
+  const key = await crypto.subtle.importKey("raw", rawKey, { name: "AES-GCM" }, false, ["decrypt"]);
+  const pt = await crypto.subtle.decrypt(
+    { name: "AES-GCM", iv: Buffer.from(iv, "base64") },
+    key,
+    Buffer.from(ct, "base64"),
+  );
+  return JSON.parse(new TextDecoder().decode(pt));
 }
