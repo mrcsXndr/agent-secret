@@ -61,24 +61,20 @@ The encryption key is generated **in your browser** and lives **only** inside th
 
 ## ✦ the flow
 
-**1. You** open [agent-secret.xndr.io](https://agent-secret.xndr.io), type the secret + an optional name, hit **Encrypt**. One click copies a self-contained block:
+**1. You** open [agent-secret.xndr.io](https://agent-secret.xndr.io), type the secret + an optional name, hit **Encrypt**. One click copies a block that's deliberately tiny — one line and one link:
 
 ```
-You've been handed a one-time secret via agent-secret (https://agent-secret.xndr.io).
-Zero-knowledge: the server stored only ciphertext and cannot read it — the key is in
-this message, held only by you.
-
-Retrieve + decrypt in one shot (Node). This is the ONLY read — the fetch destroys it:
-
-  node -e 'const c=require("crypto");fetch("https://agent-secret.xndr.io/s/k7f2-9m3q")...'
-
-It prints the value of OPENAI_API_KEY. Save it to your secret store — don't echo it,
-don't fetch again (it's already gone).
+OPENAI_API_KEY — one-time secret (agent-secret). Single GET burns it; then AES-256-GCM
+decrypt: response {ct,iv} base64, key = URL #fragment (base64url), ct = ciphertext+16-byte
+tag, plaintext = the value.
+https://s.xndr.io/k7f2-9m3q#Xy9…KEY
 ```
 
-**2. You** paste that block into your agent's chat.
+**2. You** paste that into your agent's chat.
 
-**3. Your agent** runs the one-liner, gets `OPENAI_API_KEY=sk-…`, writes it wherever it keeps secrets. The value never went through the model as something *you* typed, and the link is now dead.
+**3. Your agent** `GET`s the link (curl and fetch drop the `#fragment`, so the server only sees `/k7f2-9m3q`), decrypts the returned `{ct,iv}` with the key from the fragment, and writes the value wherever it keeps secrets. The value never went through the model as something *you* typed, and the link is now dead.
+
+> The **whole handoff is one short link**: `/<code>#<key>`. The key rides in the fragment — which browsers, `curl`, and `fetch` never transmit — so it reaches your agent but never the server.
 
 <br>
 
@@ -114,33 +110,33 @@ don't fetch again (it's already gone).
 
 ## 🤖 for the agent
 
-No install, no MCP, no SDK. Given the copy block, an agent needs **one HTTP GET and a standard AES-256-GCM decrypt**. The Node one-liner is provided; here's the shape for any runtime:
+No install, no MCP, no SDK. Given the link `https://s.xndr.io/<code>#<key>`, an agent needs **one HTTP GET and a standard AES-256-GCM decrypt**:
 
 ```
-GET https://agent-secret.xndr.io/s/<code>
+GET https://s.xndr.io/<code>        # send WITHOUT the #fragment (curl/fetch already drop it)
   → 200 {"ct":"<base64>","iv":"<base64>"}   (and the secret is now burned)
   → 410 already_claimed | expired
   → 404 not found
 
 decrypt:  AES-256-GCM
-  key    = base64url-decode(<key from the block>)      # 32 bytes
-  nonce  = base64-decode(iv)                            # 12 bytes
+  key    = base64url-decode(<the #fragment>)   # 32 bytes
+  nonce  = base64-decode(iv)                    # 12 bytes
   tag    = last 16 bytes of base64-decode(ct)
   data   = base64-decode(ct) minus the tag
-  plain  = JSON  → { "name"?: string, "value": string }
+  plain  = the secret value (UTF-8)
 ```
 
 <br>
 
 ## 🛰 api
 
-| Method   | Path            | Purpose                                                        |
-|----------|-----------------|----------------------------------------------------------------|
-| `POST`   | `/s`            | Create. Body `{ ct, iv, ttl? }` (base64 ciphertext + nonce). → `{ code, expiresAt, ttl }` |
-| `GET`    | `/s/:code`      | **Claim + burn.** → `{ ct, iv }` once, then `410`.             |
-| `GET`    | `/s/:code/meta` | Lifecycle only — `{ exists, claimed?, expiresAt? }`. Never ciphertext. |
-| `DELETE` | `/s/:code`      | Destroy immediately.                                           |
-| `GET`    | `/`             | The share form (all crypto runs here).                         |
+| Method   | Path          | Purpose                                                          |
+|----------|---------------|------------------------------------------------------------------|
+| `GET`    | `/`           | The share form (all crypto runs here).                           |
+| `POST`   | `/`           | Create. Body `{ ct, iv, ttl? }` (base64 ciphertext + nonce). → `{ code, expiresAt, ttl }` |
+| `GET`    | `/:code`      | **Claim + burn.** → `{ ct, iv }` once, then `410`.               |
+| `GET`    | `/:code/meta` | Lifecycle only — `{ exists, claimed?, expiresAt? }`. Never ciphertext. |
+| `DELETE` | `/:code`      | Destroy immediately.                                             |
 
 <br>
 

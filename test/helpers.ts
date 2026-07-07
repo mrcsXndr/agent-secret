@@ -50,22 +50,15 @@ export function json(body: unknown): RequestInit {
 const b64 = (buf: ArrayBuffer | Uint8Array): string =>
   Buffer.from(buf instanceof Uint8Array ? buf : new Uint8Array(buf)).toString("base64");
 
-export async function clientEncrypt(
-  payload: { name?: string; value: string },
-): Promise<{ ct: string; iv: string; keyB64url: string }> {
+export async function clientEncrypt(value: string): Promise<{ ct: string; iv: string; keyB64url: string }> {
   const rawKey = crypto.getRandomValues(new Uint8Array(32));
   const key = await crypto.subtle.importKey("raw", rawKey, { name: "AES-GCM" }, false, ["encrypt"]);
   const iv = crypto.getRandomValues(new Uint8Array(12));
-  const pt = new TextEncoder().encode(JSON.stringify(payload));
-  const ct = await crypto.subtle.encrypt({ name: "AES-GCM", iv }, key, pt);
+  const ct = await crypto.subtle.encrypt({ name: "AES-GCM", iv }, key, new TextEncoder().encode(value));
   return { ct: b64(ct), iv: b64(iv), keyB64url: Buffer.from(rawKey).toString("base64url") };
 }
 
-export async function clientDecrypt(
-  ct: string,
-  iv: string,
-  keyB64url: string,
-): Promise<{ name?: string; value: string }> {
+export async function clientDecrypt(ct: string, iv: string, keyB64url: string): Promise<string> {
   const rawKey = Buffer.from(keyB64url, "base64url");
   const key = await crypto.subtle.importKey("raw", rawKey, { name: "AES-GCM" }, false, ["decrypt"]);
   const pt = await crypto.subtle.decrypt(
@@ -73,5 +66,5 @@ export async function clientDecrypt(
     key,
     Buffer.from(ct, "base64"),
   );
-  return JSON.parse(new TextDecoder().decode(pt));
+  return new TextDecoder().decode(pt);
 }

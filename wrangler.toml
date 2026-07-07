@@ -11,6 +11,11 @@ main = "src/worker/index.ts"
 compatibility_date = "2026-06-01"
 account_id = "f45123901a41edb8279af5edf727894a" # XNDR Private
 
+# Short host for the claim links (s.xndr.io/<code>#<key>) + the brand host.
+[[routes]]
+pattern = "s.xndr.io"
+custom_domain = true
+
 [[routes]]
 pattern = "agent-secret.xndr.io"
 custom_domain = true

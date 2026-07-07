@@ -173,32 +173,15 @@ export const FORM_HTML = `<!doctype html>
   }
   function b64url(buf){ return b64(buf).replace(/\\+/g,'-').replace(/\\//g,'_').replace(/=+$/,''); }
 
-  // Build the self-contained instruction an agent needs — code + key + a
-  // ready-to-run decrypt. The key is embedded here and NOWHERE else.
+  // The whole handoff is ONE short link: /<code>#<key>. The key rides in the
+  // URL fragment — never sent to the server (curl and fetch drop it) — so the
+  // link IS the secret until claimed. Terse on purpose: agents are smart.
   function buildBlock(origin, code, key, name){
-    var url = origin + '/s/' + code;
-    var oneLiner =
-      'node -e \\'const c=require("crypto");fetch("' + url + '").then(r=>r.json()).then(function(o){' +
-      'if(o.error)throw new Error(o.error);' +
-      'var k=Buffer.from("' + key + '","base64url"),C=Buffer.from(o.ct,"base64"),' +
-      'd=c.createDecipheriv("aes-256-gcm",k,Buffer.from(o.iv,"base64"));' +
-      'd.setAuthTag(C.subarray(C.length-16));' +
-      'var p=JSON.parse(Buffer.concat([d.update(C.subarray(0,C.length-16)),d.final()]).toString());' +
-      'console.log(p.name?p.name+"="+p.value:p.value)})\\'';
-    var what = name ? 'the value of ' + name : 'your secret';
-    return [
-      "You've been handed a one-time secret via agent-secret (" + origin + ").",
-      "Zero-knowledge: the server stored only ciphertext and cannot read it — the key is in this message, held only by you.",
-      "",
-      "Retrieve + decrypt in one shot (Node). This is the ONLY read — the fetch destroys it server-side:",
-      "",
-      "  " + oneLiner,
-      "",
-      "It prints " + what + ". Any runtime works: GET " + url + " returns {\\"ct\\",\\"iv\\"} (base64);",
-      "decrypt with AES-256-GCM using key (base64url): " + key,
-      "",
-      "Save it straight to your secret store. Don't echo it back, and don't fetch again — it's already gone."
-    ].join("\\n");
+    var url = origin + '/' + code + '#' + key;
+    var head = name ? name + ' — ' : '';
+    return head + 'one-time secret (agent-secret). Single GET burns it; then AES-256-GCM decrypt: '
+      + 'response {ct,iv} base64, key = URL #fragment (base64url), ct = ciphertext+16-byte tag, plaintext = the value.\\n'
+      + url;
   }
 
   function copyBtn(btn, getText){
@@ -231,10 +214,10 @@ export const FORM_HTML = `<!doctype html>
       var rawKey = crypto.getRandomValues(new Uint8Array(32));
       var key = await crypto.subtle.importKey('raw', rawKey, { name:'AES-GCM' }, false, ['encrypt']);
       var iv = crypto.getRandomValues(new Uint8Array(12));
-      var plaintext = new TextEncoder().encode(JSON.stringify(name ? { name:name, value:value } : { value:value }));
+      var plaintext = new TextEncoder().encode(value); // raw value; the name stays plaintext in the block
       var ctBuf = await crypto.subtle.encrypt({ name:'AES-GCM', iv:iv }, key, plaintext);
 
-      var res = await fetch('/s', {
+      var res = await fetch('/', {
         method:'POST', headers:{'content-type':'application/json'},
         body: JSON.stringify({ ct: b64(ctBuf), iv: b64(iv), ttl: Number($('ttl').value) })
       });

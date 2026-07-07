@@ -23,8 +23,8 @@ export const MAX_TTL_S = 86_400; // 24 hours
 export const MAX_BLOB_BYTES = 49_152;
 
 // A stored secret is opaque ciphertext + nonce. The encryption key lives ONLY
-// in the sharer's copy block and never reaches this server — so nothing here,
-// nor a full KV dump, can recover a plaintext secret. That is the whole point.
+// in the sharer's link fragment and never reaches this server — so nothing
+// here, nor a full KV dump, can recover a plaintext secret. That is the point.
 interface LiveRecord {
   v: 2;
   claimed: false;
@@ -56,9 +56,9 @@ const app = new Hono<{ Bindings: Bindings }>();
 
 // ---------------------------------------------------------------- rate limit
 // Fixed-window per-IP counter in KV. Coarse but effective against code
-// enumeration; applies to all /s* routes.
+// enumeration. Skips only the form (GET /), which is safe to reload freely.
 app.use("*", async (c, next) => {
-  if (!c.req.path.startsWith("/s")) return next();
+  if (c.req.method === "GET" && c.req.path === "/") return next();
   const limit = Number.parseInt(c.env.RATE_LIMIT_PER_MIN ?? "30", 10) || 30;
   const ip = c.req.header("cf-connecting-ip") ?? "unknown";
   const windowKey = `rl:${ip}:${Math.floor(Date.now() / 60_000)}`;
@@ -70,10 +70,13 @@ app.use("*", async (c, next) => {
   return next();
 });
 
+// ------------------------------------------------------------------- web form
+app.get("/", (c) => c.html(FORM_HTML));
+
 // --------------------------------------------------------------------- create
 // Accepts ONLY ciphertext. The client encrypts before this call; the server
-// never sees a plaintext secret, a name, or the key.
-app.post("/s", async (c) => {
+// never sees a plaintext secret or the key.
+app.post("/", async (c) => {
   const body = await c.req.json().catch(() => null);
   if (!body || !isB64(body.ct) || !isB64(body.iv)) {
     return c.json(
@@ -102,26 +105,41 @@ app.post("/s", async (c) => {
 
   const now = Date.now();
   const expiresAt = now + ttl * 1000;
-  const record: LiveRecord = {
-    v: 2,
-    claimed: false,
-    ct: body.ct,
-    iv: body.iv,
-    createdAt: now,
-    expiresAt,
-  };
+  const record: LiveRecord = { v: 2, claimed: false, ct: body.ct, iv: body.iv, createdAt: now, expiresAt };
   await c.env.SECRETS.put(secretKey(code), JSON.stringify(record), { expirationTtl: kvTtl(ttl) });
 
   return c.json({ code, expiresAt: new Date(expiresAt).toISOString(), ttl }, 201);
 });
 
-// ---------------------------------------------------------------------- claim
-// A single GET returns the ciphertext and burns the secret. The caller decrypts
-// locally with the key from the copy block — the server hands back only opaque
-// bytes and can never assist decryption.
-app.get("/s/:code", async (c) => {
+// ----------------------------------------------------------------------- meta
+// Lifecycle only — never any ciphertext. Safe to poll. Registered before the
+// bare `/:code` claim so it wins for the two-segment path.
+app.get("/:code/meta", async (c) => {
   const code = normalizeCode(c.req.param("code"));
   if (!code) return c.json({ error: "bad_request", message: "Malformed claim code." }, 400);
+
+  const raw = await c.env.SECRETS.get(secretKey(code));
+  if (raw === null) return c.json({ exists: false });
+  const record = JSON.parse(raw) as Record_;
+  if (record.claimed) {
+    return c.json({
+      exists: true,
+      claimed: true,
+      claimedAt: new Date(record.claimedAt).toISOString(),
+      expiresAt: new Date(record.expiresAt).toISOString(),
+    });
+  }
+  if (Date.now() >= record.expiresAt) return c.json({ exists: false });
+  return c.json({ exists: true, claimed: false, expiresAt: new Date(record.expiresAt).toISOString() });
+});
+
+// ---------------------------------------------------------------------- claim
+// A single GET returns the ciphertext and burns the secret. The caller decrypts
+// locally with the key from the link fragment — the server hands back only
+// opaque bytes and can never assist decryption. URL is just /<code>.
+app.get("/:code", async (c) => {
+  const code = normalizeCode(c.req.param("code"));
+  if (!code) return c.json({ error: "not_found", message: "No such secret." }, 404);
 
   const raw = await c.env.SECRETS.get(secretKey(code));
   if (raw === null) {
@@ -145,40 +163,12 @@ app.get("/s/:code", async (c) => {
   return c.json({ ct: record.ct, iv: record.iv });
 });
 
-// ----------------------------------------------------------------------- meta
-// Lifecycle only — never any ciphertext. Safe to poll.
-app.get("/s/:code/meta", async (c) => {
-  const code = normalizeCode(c.req.param("code"));
-  if (!code) return c.json({ error: "bad_request", message: "Malformed claim code." }, 400);
-
-  const raw = await c.env.SECRETS.get(secretKey(code));
-  if (raw === null) return c.json({ exists: false });
-  const record = JSON.parse(raw) as Record_;
-  if (record.claimed) {
-    return c.json({
-      exists: true,
-      claimed: true,
-      claimedAt: new Date(record.claimedAt).toISOString(),
-      expiresAt: new Date(record.expiresAt).toISOString(),
-    });
-  }
-  if (Date.now() >= record.expiresAt) return c.json({ exists: false });
-  return c.json({
-    exists: true,
-    claimed: false,
-    expiresAt: new Date(record.expiresAt).toISOString(),
-  });
-});
-
 // ----------------------------------------------------------------------- burn
-app.delete("/s/:code", async (c) => {
+app.delete("/:code", async (c) => {
   const code = normalizeCode(c.req.param("code"));
   if (!code) return c.json({ error: "bad_request", message: "Malformed claim code." }, 400);
   await c.env.SECRETS.delete(secretKey(code));
   return c.body(null, 204);
 });
-
-// ------------------------------------------------------------------- web form
-app.get("/", (c) => c.html(FORM_HTML));
 
 export default app;
