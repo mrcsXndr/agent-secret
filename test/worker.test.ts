@@ -151,6 +151,53 @@ describe("burn", () => {
   });
 });
 
+describe("link-unfurler guard", () => {
+  it("does NOT burn the secret for preview crawlers (Telegram/Slack/etc.)", async () => {
+    const env = makeEnv();
+    const { data, keyB64url } = await share(env, "sk-should-survive");
+
+    // A Telegram unfurl of the pasted link must not consume the one read.
+    const preview = await app.request(`/${data.code}`, { headers: { "user-agent": "TelegramBot (like TwitterBot)" } }, env);
+    expect(preview.status).toBe(200);
+    expect(await preview.text()).not.toContain("sk-should-survive");
+    // The record is still live — meta says unclaimed.
+    expect(await (await app.request(`/${data.code}/meta`, undefined, env)).json()).toMatchObject({
+      exists: true,
+      claimed: false,
+    });
+    // ...and the real agent still gets it.
+    const claim = await app.request(`/${data.code}`, undefined, env);
+    const { ct, iv } = (await claim.json()) as { ct: string; iv: string };
+    expect(await clientDecrypt(ct, iv, keyB64url)).toBe("sk-should-survive");
+  });
+});
+
+describe("hardening headers + static", () => {
+  it("sets a strict CSP + no-referrer on the form", async () => {
+    const res = await app.request("/", undefined, makeEnv());
+    expect(res.headers.get("content-security-policy")).toContain("default-src 'none'");
+    expect(res.headers.get("referrer-policy")).toBe("no-referrer");
+    expect(res.headers.get("x-content-type-options")).toBe("nosniff");
+  });
+
+  it("marks create/claim/meta as no-store", async () => {
+    const env = makeEnv();
+    const { data, res } = await share(env, "v");
+    expect(res.headers.get("cache-control")).toBe("no-store");
+    const claim = await app.request(`/${data.code}`, undefined, env);
+    expect(claim.headers.get("cache-control")).toBe("no-store");
+  });
+
+  it("serves favicon (204) and robots (disallow) without spending the rate limit", async () => {
+    const env = makeEnv({ RATE_LIMIT_PER_MIN: "1" });
+    for (let i = 0; i < 3; i++) {
+      expect((await app.request("/favicon.ico", undefined, env)).status).toBe(204);
+    }
+    const robots = await app.request("/robots.txt", undefined, env);
+    expect(await robots.text()).toContain("Disallow: /");
+  });
+});
+
 describe("form + rate limiting", () => {
   it("serves the form at / and never rate-limits it", async () => {
     const env = makeEnv({ RATE_LIMIT_PER_MIN: "1" });

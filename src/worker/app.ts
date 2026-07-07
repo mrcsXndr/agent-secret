@@ -52,13 +52,23 @@ const kvTtl = (ttlSeconds: number) => Math.max(ttlSeconds, MIN_TTL_S) + 60;
 const isB64 = (s: unknown): s is string =>
   typeof s === "string" && s.length > 0 && /^[A-Za-z0-9+/_-]+={0,2}$/.test(s);
 
+// Link unfurlers (Telegram/Slack/Discord/etc.) fetch a pasted URL to build a
+// preview. Since claiming is a bare GET that burns the secret, an unfurl would
+// destroy it before the agent ever reads it. We detect these crawlers and
+// serve them a harmless note instead of touching the record.
+const UNFURLERS =
+  /TelegramBot|Slackbot|Discordbot|WhatsApp|facebookexternalhit|Twitterbot|LinkedInBot|Googlebot|Google-InspectionTool|bingbot|BingPreview|redditbot|Applebot|SkypeUriPreview|vkShare|Iframely|Embedly|Pinterest/i;
+
 const app = new Hono<{ Bindings: Bindings }>();
 
 // ---------------------------------------------------------------- rate limit
-// Fixed-window per-IP counter in KV. Coarse but effective against code
-// enumeration. Skips only the form (GET /), which is safe to reload freely.
+// Fixed-window per-IP counter in KV. Coarse and per-colo (KV is eventually
+// consistent), so it is a soft speed bump against code enumeration, not a hard
+// bound — the 31^8 code space is the real guard. Skips the form and incidental
+// static probes so neither spends KV.
 app.use("*", async (c, next) => {
-  if (c.req.method === "GET" && c.req.path === "/") return next();
+  const p = c.req.path;
+  if ((c.req.method === "GET" && p === "/") || p === "/favicon.ico" || p === "/robots.txt") return next();
   const limit = Number.parseInt(c.env.RATE_LIMIT_PER_MIN ?? "30", 10) || 30;
   const ip = c.req.header("cf-connecting-ip") ?? "unknown";
   const windowKey = `rl:${ip}:${Math.floor(Date.now() / 60_000)}`;
@@ -66,12 +76,30 @@ app.use("*", async (c, next) => {
   if (count >= limit) {
     return c.json({ error: "rate_limited", message: "Too many requests; try again in a minute." }, 429);
   }
-  await c.env.SECRETS.put(windowKey, String(count + 1), { expirationTtl: 120 });
+  // Fail-open: KV caps writes at ~1/s per key; a burst that throws must not 500.
+  try {
+    await c.env.SECRETS.put(windowKey, String(count + 1), { expirationTtl: 120 });
+  } catch {
+    /* ignore — the counter is best-effort */
+  }
   return next();
 });
 
 // ------------------------------------------------------------------- web form
-app.get("/", (c) => c.html(FORM_HTML));
+app.get("/", (c) => {
+  // The plaintext + key live in this page's DOM (all client-side). Lock it down:
+  // no external anything, un-framable, no referrer leakage.
+  c.header(
+    "Content-Security-Policy",
+    "default-src 'none'; script-src 'unsafe-inline'; style-src 'unsafe-inline'; img-src data:; connect-src 'self'; base-uri 'none'; form-action 'none'; frame-ancestors 'none'",
+  );
+  c.header("Referrer-Policy", "no-referrer");
+  c.header("X-Content-Type-Options", "nosniff");
+  return c.html(FORM_HTML);
+});
+
+app.get("/favicon.ico", (c) => c.body(null, 204));
+app.get("/robots.txt", (c) => c.text("User-agent: *\nDisallow: /\n"));
 
 // --------------------------------------------------------------------- create
 // Accepts ONLY ciphertext. The client encrypts before this call; the server
@@ -108,6 +136,7 @@ app.post("/", async (c) => {
   const record: LiveRecord = { v: 2, claimed: false, ct: body.ct, iv: body.iv, createdAt: now, expiresAt };
   await c.env.SECRETS.put(secretKey(code), JSON.stringify(record), { expirationTtl: kvTtl(ttl) });
 
+  c.header("Cache-Control", "no-store");
   return c.json({ code, expiresAt: new Date(expiresAt).toISOString(), ttl }, 201);
 });
 
@@ -115,6 +144,7 @@ app.post("/", async (c) => {
 // Lifecycle only — never any ciphertext. Safe to poll. Registered before the
 // bare `/:code` claim so it wins for the two-segment path.
 app.get("/:code/meta", async (c) => {
+  c.header("Cache-Control", "no-store");
   const code = normalizeCode(c.req.param("code"));
   if (!code) return c.json({ error: "bad_request", message: "Malformed claim code." }, 400);
 
@@ -138,8 +168,17 @@ app.get("/:code/meta", async (c) => {
 // locally with the key from the link fragment — the server hands back only
 // opaque bytes and can never assist decryption. URL is just /<code>.
 app.get("/:code", async (c) => {
+  c.header("Cache-Control", "no-store");
   const code = normalizeCode(c.req.param("code"));
   if (!code) return c.json({ error: "not_found", message: "No such secret." }, 404);
+
+  // Serve link-preview crawlers a no-op — never mutate the record for them,
+  // or the preview would burn the secret before the agent claims it.
+  if (UNFURLERS.test(c.req.header("user-agent") ?? "")) {
+    return c.json({
+      note: "One-time agent-secret link. Your agent claims it with a direct GET, which reveals it once and destroys it.",
+    });
+  }
 
   const raw = await c.env.SECRETS.get(secretKey(code));
   if (raw === null) {
@@ -154,8 +193,11 @@ app.get("/:code", async (c) => {
     return c.json({ error: "expired", message: "This secret has expired." }, 410);
   }
 
-  // Burn first: replace with a tombstone before returning, so a duplicate
-  // in-flight request cannot read the same ciphertext twice.
+  // Overwrite with a tombstone before returning the ciphertext. NOTE: this is
+  // best-effort single-use — Workers KV is eventually consistent with no
+  // compare-and-set, so two claims racing within KV's propagation window can
+  // both read the live record. For strict once-only semantics, front this with
+  // a Durable Object. Confidentiality is unaffected either way.
   const tombstone: Tombstone = { v: 2, claimed: true, claimedAt: Date.now(), expiresAt: record.expiresAt };
   const remainingTtl = Math.ceil((record.expiresAt - Date.now()) / 1000);
   await c.env.SECRETS.put(secretKey(code), JSON.stringify(tombstone), { expirationTtl: kvTtl(remainingTtl) });

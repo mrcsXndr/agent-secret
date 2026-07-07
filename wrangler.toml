@@ -11,11 +11,6 @@ main = "src/worker/index.ts"
 compatibility_date = "2026-06-01"
 account_id = "f45123901a41edb8279af5edf727894a" # XNDR Private
 
-# Short host for the claim links (s.xndr.io/<code>#<key>) + the brand host.
-[[routes]]
-pattern = "s.xndr.io"
-custom_domain = true
-
 [[routes]]
 pattern = "agent-secret.xndr.io"
 custom_domain = true
@@ -25,5 +20,5 @@ binding = "SECRETS"
 id = "63a528cba871428998ae658a56fa6092"
 
 [vars]
-# Requests per minute per IP across /s* endpoints (create/claim/meta/burn).
+# Requests per minute per IP across the create/claim/meta/burn routes.
 RATE_LIMIT_PER_MIN = "30"

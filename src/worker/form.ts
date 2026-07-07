@@ -1,6 +1,6 @@
 // Self-contained web form served at GET /. All encryption happens HERE, in the
 // browser: a random AES-256-GCM key is generated, the secret is encrypted, and
-// only the ciphertext is POSTed to /s. The key never leaves this page — it is
+// only the ciphertext is POSTed to /. The key never leaves this page — it is
 // baked into the copy block the human hands their agent. The server is
 // zero-knowledge by construction. No external assets: all CSS/JS/SVG is inline.
 
@@ -198,6 +198,7 @@ export const FORM_HTML = `<!doctype html>
   $('again').addEventListener('click', function(){
     result.style.display = 'none';
     form.style.display = ''; trust.style.display = '';
+    $('name').value = '';
     $('value').focus();
   });
 

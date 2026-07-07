@@ -3,17 +3,21 @@
 <br>
 
 ```
-    ▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄
-    █                                                               █
-    █    █████╗  ██████╗ ███████╗███╗   ██╗████████╗               █
-    █   ██╔══██╗██╔════╝ ██╔════╝████╗  ██║╚══██╔══╝               █
-    █   ███████║██║  ███╗█████╗  ██╔██╗ ██║   ██║      · secret ·   █
-    █   ██╔══██║██║   ██║██╔══╝  ██║╚██╗██║   ██║                   █
-    █   ██║  ██║╚██████╔╝███████╗██║ ╚████║   ██║   zero-knowledge  █
-    █   ╚═╝  ╚═╝ ╚═════╝ ╚══════╝╚═╝  ╚═══╝   ╚═╝   one-time share  █
-    █                                                               █
-    ▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀
+ █████╗  ██████╗ ███████╗███╗   ██╗████████╗
+██╔══██╗██╔════╝ ██╔════╝████╗  ██║╚══██╔══╝
+███████║██║  ███╗█████╗  ██╔██╗ ██║   ██║
+██╔══██║██║   ██║██╔══╝  ██║╚██╗██║   ██║
+██║  ██║╚██████╔╝███████╗██║ ╚████║   ██║
+╚═╝  ╚═╝ ╚═════╝ ╚══════╝╚═╝  ╚═══╝   ╚═╝
+███████╗███████╗ ██████╗██████╗ ███████╗████████╗
+██╔════╝██╔════╝██╔════╝██╔══██╗██╔════╝╚══██╔══╝
+███████╗█████╗  ██║     ██████╔╝█████╗     ██║
+╚════██║██╔══╝  ██║     ██╔══██╗██╔══╝     ██║
+███████║███████╗╚██████╗██║  ██║███████╗   ██║
+╚══════╝╚══════╝ ╚═════╝╚═╝  ╚═╝╚══════╝   ╚═╝
 ```
+
+**· zero-knowledge · one-time · self-destructing ·**
 
 <sub>v1.0.0</sub>
 
@@ -67,14 +71,14 @@ The encryption key is generated **in your browser** and lives **only** inside th
 OPENAI_API_KEY — one-time secret (agent-secret). Single GET burns it; then AES-256-GCM
 decrypt: response {ct,iv} base64, key = URL #fragment (base64url), ct = ciphertext+16-byte
 tag, plaintext = the value.
-https://s.xndr.io/k7f2-9m3q#Xy9…KEY
+https://agent-secret.xndr.io/k7f2-9m3q#Xy9…KEY
 ```
 
 **2. You** paste that into your agent's chat.
 
 **3. Your agent** `GET`s the link (curl and fetch drop the `#fragment`, so the server only sees `/k7f2-9m3q`), decrypts the returned `{ct,iv}` with the key from the fragment, and writes the value wherever it keeps secrets. The value never went through the model as something *you* typed, and the link is now dead.
 
-> The **whole handoff is one short link**: `/<code>#<key>`. The key rides in the fragment — which browsers, `curl`, and `fetch` never transmit — so it reaches your agent but never the server.
+> The **whole handoff is one link**: `agent-secret.xndr.io/<code>#<key>`. The key rides in the fragment — which browsers, `curl`, and `fetch` never transmit — so it reaches your agent but never the server.
 
 <br>
 
@@ -104,16 +108,18 @@ https://s.xndr.io/k7f2-9m3q#Xy9…KEY
 ╰──────────────────────────────────────────────────────────────────────────╯
 ```
 
-**Threat model, honestly.** The claim code **and** the decryption key travel together inside the block you paste. Whoever holds that block can decrypt — exactly once — so treat it like the secret until your agent has claimed it. Because it's single-use, an interceptor who reads it first makes your agent's fetch fail: **tamper is loud, not silent.** What the server *cannot* do, by construction, is read your secret — at rest or in flight.
+**Threat model, honestly.** The claim code **and** the decryption key travel together inside the block you paste. Whoever holds that block can decrypt — exactly once — so treat it like the secret until your agent has claimed it. If an interceptor reads it first, your agent's fetch usually fails (`410`) — tamper tends to be loud. One caveat: single-use is **best-effort**, not atomic — Workers KV has no compare-and-set, so a claim racing your agent within KV's short propagation window may not be detected (front the claim with a Durable Object if you need strict once-only). What the server *cannot* do, by construction, is read your secret — at rest or in flight.
+
+> **Unfurl-safe.** Pasting the link into Telegram, Slack, Discord, etc. is fine — their preview crawlers are detected and served a no-op, so they never burn the secret. (They couldn't read it anyway: crawlers don't send the `#fragment`.)
 
 <br>
 
 ## 🤖 for the agent
 
-No install, no MCP, no SDK. Given the link `https://s.xndr.io/<code>#<key>`, an agent needs **one HTTP GET and a standard AES-256-GCM decrypt**:
+No install, no MCP, no SDK. Given the link `https://agent-secret.xndr.io/<code>#<key>`, an agent needs **one HTTP GET and a standard AES-256-GCM decrypt**:
 
 ```
-GET https://s.xndr.io/<code>        # send WITHOUT the #fragment (curl/fetch already drop it)
+GET https://agent-secret.xndr.io/<code>        # send WITHOUT the #fragment (curl/fetch already drop it)
   → 200 {"ct":"<base64>","iv":"<base64>"}   (and the secret is now burned)
   → 410 already_claimed | expired
   → 404 not found
@@ -126,6 +132,8 @@ decrypt:  AES-256-GCM
   plain  = the secret value (UTF-8)
 ```
 
+> Many libraries (WebCrypto, Python `cryptography`) take `ct` with the tag **appended** — pass `base64-decode(ct)` whole and skip the manual split. OpenSSL/Node-style APIs want the tag separated, as shown.
+
 <br>
 
 ## 🛰 api
@@ -134,7 +142,7 @@ decrypt:  AES-256-GCM
 |----------|---------------|------------------------------------------------------------------|
 | `GET`    | `/`           | The share form (all crypto runs here).                           |
 | `POST`   | `/`           | Create. Body `{ ct, iv, ttl? }` (base64 ciphertext + nonce). → `{ code, expiresAt, ttl }` |
-| `GET`    | `/:code`      | **Claim + burn.** → `{ ct, iv }` once, then `410`.               |
+| `GET`    | `/:code`      | **Claim + burn.** → `{ ct, iv }` once, then `410`. (Preview crawlers get a no-op.) |
 | `GET`    | `/:code/meta` | Lifecycle only — `{ exists, claimed?, expiresAt? }`. Never ciphertext. |
 | `DELETE` | `/:code`      | Destroy immediately.                                             |
 
@@ -148,8 +156,10 @@ It's a single Cloudflare Worker + one KV namespace. **No secrets to configure** 
 $ git clone https://github.com/mrcsXndr/agent-secret && cd agent-secret
 $ npm install
 
+# In wrangler.toml: set your own account_id, and replace (or remove) the
+# [[routes]] block with your domain — the shipped values are XNDR's.
 $ npx wrangler kv namespace create SECRETS      # paste the id into wrangler.toml
-$ npx wrangler deploy                            # bind a custom domain in wrangler.toml
+$ npx wrangler deploy
 
 $ npm run dev                                    # local: http://localhost:8787
 $ npm test                                       # vitest — incl. full E2E round-trip
