@@ -1,180 +1,162 @@
-<div align="center">
+# agent-secret
 
-<br>
+**Hand your AI agent a secret through a one-time link, so it never sits in the chat transcript.**
 
-```
-   █████╗  ██████╗ ███████╗███╗   ██╗████████╗
-  ██╔══██╗██╔════╝ ██╔════╝████╗  ██║╚══██╔══╝
-  ███████║██║  ███╗█████╗  ██╔██╗ ██║   ██║   
-  ██╔══██║██║   ██║██╔══╝  ██║╚██╗██║   ██║   
-  ██║  ██║╚██████╔╝███████╗██║ ╚████║   ██║   
-  ╚═╝  ╚═╝ ╚═════╝ ╚══════╝╚═╝  ╚═══╝   ╚═╝   
-███████╗███████╗ ██████╗██████╗ ███████╗████████╗
-██╔════╝██╔════╝██╔════╝██╔══██╗██╔════╝╚══██╔══╝
-███████╗█████╗  ██║     ██████╔╝█████╗     ██║   
-╚════██║██╔══╝  ██║     ██╔══██╗██╔══╝     ██║   
-███████║███████╗╚██████╗██║  ██║███████╗   ██║   
-╚══════╝╚══════╝ ╚═════╝╚═╝  ╚═╝╚══════╝   ╚═╝   
-```
+[agent-secret.xndr.io](https://agent-secret.xndr.io) · [How it works](#how-it-works) · [For AI agents](#for-ai-agents) · [Self-host](#self-host) · MIT
 
-**· zero-knowledge · one-time · self-destructing ·**
+![agent-secret: the key half of the link never reaches the server](public/og.png)
 
-<sub>v1.0.0</sub>
+## Why
 
-[![Cloudflare Workers](https://img.shields.io/badge/cloudflare-workers-F38020?style=flat&logo=cloudflare&logoColor=white)](https://workers.cloudflare.com/)
-[![Zero-knowledge](https://img.shields.io/badge/crypto-AES--256--GCM-34d399?style=flat)](#-how-it-stays-zero-knowledge)
-[![Agent needs just a fetch](https://img.shields.io/badge/agent%20needs-just%20a%20fetch-7c6cff?style=flat)](#-for-the-agent)
-[![License](https://img.shields.io/badge/license-MIT-black?style=flat)](./LICENSE)
+When you paste an API key into an agent's chat, it stays in the transcript, the logs and the model context for as long as those are kept. You usually just wanted it in the agent's `.env`.
 
-<br>
+agent-secret moves that handoff out of the chat. You encrypt the secret in your browser and give your agent one link. The agent claims it once, decrypts it locally and writes it where secrets belong. The server only ever holds ciphertext it cannot open, and after the claim the link left in the transcript is dead.
 
-**encrypt in the browser · hand your agent a self-destructing link · the server never sees it**
+## 30-second version
 
-<br>
+1. Open [agent-secret.xndr.io](https://agent-secret.xndr.io), paste the secret, optionally name it (`OPENAI_API_KEY`), pick how long it stays claimable.
+2. Click **Encrypt and make link**, then **Copy**. You get one spec line and one link:
 
-[**▶ agent-secret.xndr.io**](https://agent-secret.xndr.io)
+   ```
+   OPENAI_API_KEY: one-time secret from agent-secret. GET the URL on the last line without its #fragment, using your own User-Agent; it answers once with JSON {ct,iv} (base64), then 410. Decrypt AES-256-GCM: key = base64url-decode(#fragment), nonce = iv, ct ends with the 16-byte tag. Save the plaintext as OPENAI_API_KEY in your env or a gitignored .env; never print it. Full spec: https://agent-secret.xndr.io/llms.txt
+   https://agent-secret.xndr.io/k7f2-9m3q#Q2xvc2VkIGJ5IGRlZmF1bHQuIE9wZW4gYnkgY2hvaWNl
+   ```
 
-<br>
+3. Paste that to your agent. It claims the link, saves the value and confirms by name.
 
----
+## How it works
 
-<br>
+The link has two halves: `https://agent-secret.xndr.io/k7f2-9m3q` `#Q2xv…`. Browsers, curl and fetch never send the part after `#` to the server, so the server sees the code and never the key.
 
-</div>
+1. Your browser makes a random 256-bit key and encrypts the secret with AES-256-GCM (WebCrypto). See [`src/worker/form.ts` lines 20-27](src/worker/form.ts#L20-L27).
+2. It POSTs only `{ ct, iv, ttl }`: ciphertext with the 16-byte tag appended, the 12-byte nonce and the expiry. No key, no name. See [lines 29-32](src/worker/form.ts#L29-L32).
+3. The Worker stores that in Workers KV under a random code (`xxxx-xxxx`, 31^8 space) and returns the code. The page builds the link `/<code>#<key>`.
+4. The agent GETs `/<code>`. The Worker returns `{ ct, iv }` and overwrites the record with a tombstone (no ciphertext) in the same request. A second GET gets `410`.
+5. The agent decrypts locally with the key from the fragment.
 
-## ⚡ what it does
+Unclaimed secrets expire after 5 minutes to 24 hours and are purged from KV.
 
-You need to get an API key into an AI agent. Paste it into the chat and it lives in the transcript, the logs, and the model context — forever. `agent-secret` fixes the handoff:
+### What the server sees
 
-```
-┌──────────────────────────────────────────────────────────────────────────┐
-│                                                                          │
-│   [ YOU ]                    [ agent-secret ]              [ YOUR AGENT ] │
-│                                                                          │
-│   type secret   ──encrypt──▶  stores only        ──fetch──▶  fetches +   │
-│   in browser     in browser   ciphertext + iv     one time   decrypts    │
-│                               (never the key)                locally     │
-│                                                                          │
-│                          🔥 burns on first read                          │
-└──────────────────────────────────────────────────────────────────────────┘
-```
+| | Your tab | Server | Agent | Link previews |
+|---|---|---|---|---|
+| The secret | yes | no | yes | no |
+| The key | yes | no | yes | no |
+| Ciphertext | yes | yes | yes | no |
+| Variable name | yes | no | yes | no |
+| IP and timing | n/a | yes | n/a | n/a |
 
-The encryption key is generated **in your browser** and lives **only** inside the instruction you hand your agent. It never touches the server. So a full database dump — or a subpoena, or a rogue operator reading the source — recovers **nothing but ciphertext**. That's the whole product.
+The server also learns the ciphertext length (secret length + 16 bytes). Link-preview bots (Slack, Telegram, Discord, LinkedIn and others, matched by User-Agent) get a short note instead of the ciphertext, so pasting the link into a chat app does not burn it.
 
-<br>
+### Threat model: what it does not protect against
 
-## ✦ the flow
+- **The link is the secret until it is claimed.** Anyone who sees the whole link first can claim it. Your agent then gets `410`: rotate the secret.
+- **Single use is best effort.** Workers KV has no compare-and-set, so two claims racing within KV's propagation window can both succeed. A Durable Object would make it strict; this version does not use one.
+- **Previews do not burn, and do not warn.** A recognised preview bot never consumes the link, so it cannot tell you the link was pasted somewhere. An unrecognised bot will burn it, though it still cannot decrypt.
+- **You trust the page you load.** A compromised server could serve a script that leaks the key. The page's Content-Security-Policy pins its one inline script by SHA-256 hash and shows that hash on the page; compare it with the source, or self-host.
+- **Your agent sees the plaintext.** That is the point. This keeps the secret out of the transcript, not out of the agent's machine. An agent that prints the value puts it back in the transcript.
+- **Rate limiting is soft.** Per-IP, per-minute and per-location (KV is eventually consistent). The code space and short TTLs are the real guard against guessing.
 
-**1. You** open [agent-secret.xndr.io](https://agent-secret.xndr.io), type the secret + an optional name, hit **Encrypt**. One click copies a block that's deliberately tiny — one line and one link:
+### Verify it yourself
 
-```
-OPENAI_API_KEY — one-time secret (agent-secret). Single GET burns it; then AES-256-GCM
-decrypt: response {ct,iv} base64, key = URL #fragment (base64url), ct = ciphertext+16-byte
-tag, plaintext = the value.
-https://agent-secret.xndr.io/k7f2-9m3q#Xy9…KEY
-```
+- View the page source: one inline script, no external files, no analytics.
+- Open the network tab and create a test secret: the only request carries `ct`, `iv` and `ttl`.
+- Read the response headers: `script-src 'sha256-…'` allows exactly one script, `connect-src 'self'` stops the page talking to any other origin. `npm test` checks that the hash matches the source.
+- Read [`src/worker/app.ts`](src/worker/app.ts), about 200 lines. The Worker has no keys of its own.
 
-**2. You** paste that into your agent's chat.
+## For AI agents
 
-**3. Your agent** `GET`s the link (curl and fetch drop the `#fragment`, so the server only sees `/k7f2-9m3q`), decrypts the returned `{ct,iv}` with the key from the fragment, and writes the value wherever it keeps secrets. The value never went through the model as something *you* typed, and the link is now dead.
+Given a link `https://<host>/<code>#<key>`. The same text is served as plain text at [`/llms.txt`](https://agent-secret.xndr.io/llms.txt).
 
-> The **whole handoff is one link**: `agent-secret.xndr.io/<code>#<key>`. The key rides in the fragment — which browsers, `curl`, and `fetch` never transmit — so it reaches your agent but never the server.
+1. Split the link at `#`. URL = the part before, key = the part after. Never send the key anywhere.
+2. GET the URL once, with a User-Agent of your own (e.g. `agent-secret-client/1.0`). That read burns the secret.
+3. Decrypt AES-256-GCM: key = base64url-decode(fragment), 32 bytes. Nonce = base64-decode(`iv`), 12 bytes. Input = base64-decode(`ct`), ciphertext with the 16-byte tag appended. The UTF-8 plaintext is the value; nothing is wrapped around it.
+4. Write it straight to an environment variable, a gitignored `.env` or a secret manager.
+5. Never print, log or repeat the value. Confirm by name only.
 
-<br>
+| Status | Body | Meaning |
+|---|---|---|
+| `200` | `{"ct","iv"}` (base64) | Claimed. The secret is now burned. |
+| `410` | `already_claimed` / `expired` | Someone claimed it first, or it expired. Ask for a new link and rotate the secret. |
+| `404` | `not_found` | Wrong code, or expired and purged. |
+| `403` | `error code: 1010` (plain text) | Cloudflare's Browser Integrity Check refused a library default User-Agent (Python-urllib is one) before the request reached the Worker. Nothing was claimed. Retry with your own User-Agent. |
+| `429` | `rate_limited` | Wait a minute. |
 
-## 🔒 how it stays zero-knowledge
+Libraries differ on the tag: WebCrypto and Python `cryptography` take `ct` whole; Node's `createDecipheriv` wants the last 16 bytes passed via `setAuthTag`, as below.
 
-```
-╭──────────────────────────────────────────────────────────────────────────╮
-│                                                                          │
-│  ◆ CLIENT-SIDE CRYPTO   AES-256-GCM in the browser (WebCrypto). Only     │
-│                         ciphertext + a random nonce are ever POSTed.     │
-│                                                                          │
-│  ◆ KEY NEVER SENT       the 256-bit key is generated in-page and baked   │
-│                         into the copy block. The server can't derive,    │
-│                         log, or store it — it never arrives.             │
-│                                                                          │
-│  ◆ SINGLE-USE           the first GET returns the ciphertext and writes  │
-│                         a tombstone in the same step. Read #2 → 410.     │
-│                                                                          │
-│  ◆ SHORT TTL            5 min – 24 h, auto-purged from KV on expiry.     │
-│                                                                          │
-│  ◆ RATE LIMITED         per-IP fixed window blunts code enumeration.     │
-│                                                                          │
-│  ◆ NO SERVER SECRETS    the Worker holds no keys of its own. Read the    │
-│                         source — nothing there can read a stored secret. │
-│                         Verifiable, not a promise.                       │
-│                                                                          │
-╰──────────────────────────────────────────────────────────────────────────╯
+**curl + node (bash):**
+
+```sh
+LINK='PASTE-THE-LINK-HERE'   # https://<host>/<code>#<key>
+NAME=OPENAI_API_KEY          # the variable the value should land in
+curl -sS -A 'agent-secret-client/1.0' "${LINK%%#*}" |
+KEY="${LINK#*#}" NAME="$NAME" node -e '
+const r = JSON.parse(require("fs").readFileSync(0, "utf8"));
+if (!r.ct) throw new Error("claim failed: " + (r.error || "no ciphertext"));
+const c = Buffer.from(r.ct, "base64");
+const d = require("crypto").createDecipheriv("aes-256-gcm",
+  Buffer.from(process.env.KEY, "base64url"), Buffer.from(r.iv, "base64"));
+d.setAuthTag(c.subarray(-16));
+const v = Buffer.concat([d.update(c.subarray(0, -16)), d.final()]).toString("utf8");
+require("fs").appendFileSync(".env", process.env.NAME + "=" + v + "\n");
+console.log("saved " + process.env.NAME + " to .env");'
 ```
 
-**Threat model, honestly.** The claim code **and** the decryption key travel together inside the block you paste. Whoever holds that block can decrypt — exactly once — so treat it like the secret until your agent has claimed it. If an interceptor reads it first, your agent's fetch usually fails (`410`) — tamper tends to be loud. One caveat: single-use is **best-effort**, not atomic — Workers KV has no compare-and-set, so a claim racing your agent within KV's short propagation window may not be detected (front the claim with a Durable Object if you need strict once-only). What the server *cannot* do, by construction, is read your secret — at rest or in flight.
+**Python:**
 
-> **Unfurl-safe.** Pasting the link into Telegram, Slack, Discord, etc. is fine — their preview crawlers are detected and served a no-op, so they never burn the secret. (They couldn't read it anyway: crawlers don't send the `#fragment`.)
+```python
+# pip install cryptography
+import base64, json, urllib.request
+from cryptography.hazmat.primitives.ciphers.aead import AESGCM
 
-<br>
+LINK = "PASTE-THE-LINK-HERE"   # https://<host>/<code>#<key>
+NAME = "OPENAI_API_KEY"        # the variable the value should land in
 
-## 🤖 for the agent
-
-No install, no MCP, no SDK. Given the link `https://agent-secret.xndr.io/<code>#<key>`, an agent needs **one HTTP GET and a standard AES-256-GCM decrypt**:
-
-```
-GET https://agent-secret.xndr.io/<code>        # send WITHOUT the #fragment (curl/fetch already drop it)
-  → 200 {"ct":"<base64>","iv":"<base64>"}   (and the secret is now burned)
-  → 410 already_claimed | expired
-  → 404 not found
-
-decrypt:  AES-256-GCM
-  key    = base64url-decode(<the #fragment>)   # 32 bytes
-  nonce  = base64-decode(iv)                    # 12 bytes
-  tag    = last 16 bytes of base64-decode(ct)
-  data   = base64-decode(ct) minus the tag
-  plain  = the secret value (UTF-8)
+url, key = LINK.split("#", 1)
+req = urllib.request.Request(url, headers={"User-Agent": "agent-secret-client/1.0"})
+with urllib.request.urlopen(req) as res:   # raises HTTPError on 403/404/410/429
+    body = json.load(res)
+value = AESGCM(base64.urlsafe_b64decode(key + "=" * (-len(key) % 4))).decrypt(
+    base64.b64decode(body["iv"]), base64.b64decode(body["ct"]), None
+).decode("utf-8")
+with open(".env", "a", encoding="utf-8") as f:
+    f.write(f"{NAME}={value}\n")
+print(f"saved {NAME} to .env")
 ```
 
-> Many libraries (WebCrypto, Python `cryptography`) take `ct` with the tag **appended** — pass `base64-decode(ct)` whole and skip the manual split. OpenSSL/Node-style APIs want the tag separated, as shown.
+Both append to `.env` in the current directory and print only the name.
 
-<br>
+## API
 
-## 🛰 api
+| Method | Path | Purpose |
+|---|---|---|
+| `GET` | `/` | The page. All crypto runs here. |
+| `POST` | `/` | Create. Body `{ ct, iv, ttl? }` (base64). Returns `{ code, expiresAt, ttl }`. |
+| `GET` | `/:code` | Claim and burn. Returns `{ ct, iv }` once, then `410`. Preview bots get a note. |
+| `GET` | `/:code/meta` | Lifecycle only: `{ exists, claimed?, expiresAt? }`. Never ciphertext. |
+| `DELETE` | `/:code` | Destroy now. |
+| `GET` | `/llms.txt` | The agent protocol as plain text. |
 
-| Method   | Path          | Purpose                                                          |
-|----------|---------------|------------------------------------------------------------------|
-| `GET`    | `/`           | The share form (all crypto runs here).                           |
-| `POST`   | `/`           | Create. Body `{ ct, iv, ttl? }` (base64 ciphertext + nonce). → `{ code, expiresAt, ttl }` |
-| `GET`    | `/:code`      | **Claim + burn.** → `{ ct, iv }` once, then `410`. (Preview crawlers get a no-op.) |
-| `GET`    | `/:code/meta` | Lifecycle only — `{ exists, claimed?, expiresAt? }`. Never ciphertext. |
-| `DELETE` | `/:code`      | Destroy immediately.                                             |
+## Self-host
 
-<br>
-
-## 🚀 self-host
-
-It's a single Cloudflare Worker + one KV namespace. **No secrets to configure** — the server is stateless about keys by design.
+One Cloudflare Worker and one KV namespace. There are no server secrets to configure.
 
 ```console
-$ git clone https://github.com/mrcsXndr/agent-secret && cd agent-secret
-$ npm install
-
-# In wrangler.toml: set your own account_id, and replace (or remove) the
-# [[routes]] block with your domain — the shipped values are XNDR's.
-$ npx wrangler kv namespace create SECRETS      # paste the id into wrangler.toml
-$ npx wrangler deploy
-
-$ npm run dev                                    # local: http://localhost:8787
-$ npm test                                       # vitest — incl. full E2E round-trip
+git clone https://github.com/mrcsXndr/agent-secret && cd agent-secret
+npm install
+npx wrangler kv namespace create SECRETS   # put the printed id in wrangler.toml
+# in wrangler.toml: set your own account_id, and point [[routes]] at your domain (or remove it)
+npx wrangler deploy
 ```
 
-`RATE_LIMIT_PER_MIN` (default `30`) is the only knob, in `wrangler.toml`.
+Local: `npm run dev` (http://localhost:8787), `npm test`, `npm run typecheck`. `RATE_LIMIT_PER_MIN` in `wrangler.toml` (default `30`) is the only setting. `public/og.png` is the social preview image, rendered from [`docs/launch/og.html`](docs/launch/og.html).
 
-<br>
+Stack: Cloudflare Workers, Hono (the only runtime dependency), Workers KV, WebCrypto, TypeScript, Vitest.
 
-## 🧱 stack
+## Security
 
-`Cloudflare Workers` · `Hono` · `Workers KV` · `WebCrypto (AES-256-GCM)` · `TypeScript` · `Vitest` — no runtime dependencies beyond Hono.
+Please report vulnerabilities privately through [GitHub security advisories](https://github.com/mrcsXndr/agent-secret/security/advisories/new), not in public issues. See [SECURITY.md](SECURITY.md).
 
-<br>
+## License
 
-<div align="center">
-<sub>built by <a href="https://xndr.io">XNDR</a> · MIT</sub>
-</div>
+[MIT](LICENSE) © XNDR SLU

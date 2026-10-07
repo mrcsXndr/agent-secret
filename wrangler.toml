@@ -15,6 +15,10 @@ account_id = "f45123901a41edb8279af5edf727894a" # XNDR Private
 pattern = "agent-secret.xndr.io"
 custom_domain = true
 
+# Static files (the Open Graph image), served before the Worker runs.
+[assets]
+directory = "./public"
+
 [[kv_namespaces]]
 binding = "SECRETS"
 id = "63a528cba871428998ae658a56fa6092"

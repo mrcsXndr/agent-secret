@@ -1,0 +1,58 @@
+<!doctype html>
+<!-- Source of public/og.png (1200x630). Render with headless Chrome:
+     chrome --headless=new --window-size=1200,630 --hide-scrollbars --screenshot=public/og.png docs/launch/og.html -->
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>agent-secret og image</title>
+<style>
+  :root{
+    --bg:#e6eae1; --surface:#f1f4ed; --stub:#d2ddd0;
+    --ink:#131d17; --muted:#4a564e; --faint:#6d7870; --key:#285640;
+    --serif:"Iowan Old Style","Sitka Heading","Sitka Text",Charter,"Palatino Linotype",Georgia,serif;
+    --sans:system-ui,-apple-system,"Segoe UI",Roboto,sans-serif;
+    --mono:ui-monospace,"SF Mono","Cascadia Mono",Menlo,Consolas,monospace;
+    --n:16px;
+  }
+  *{box-sizing:border-box}
+  html,body{margin:0; width:1200px; height:630px; overflow:hidden}
+  body{
+    color:var(--ink); font-family:var(--sans);
+    background:url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='180' height='180'%3E%3Cfilter id='n'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='.85' numOctaves='2' stitchTiles='stitch'/%3E%3CfeColorMatrix values='0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 .1 0 0 0 0'/%3E%3C/filter%3E%3Crect width='100%25' height='100%25' filter='url(%23n)'/%3E%3C/svg%3E"), var(--bg);
+    padding:64px 72px 0;
+  }
+  .mark{display:flex; align-items:center; gap:14px; font:600 34px/1 var(--serif)}
+  .mark svg{color:var(--key)}
+  h1{font:500 76px/1.04 var(--serif); letter-spacing:-.015em; margin:46px 0 0; max-width:900px}
+  .sub{font:400 28px/1.35 var(--sans); color:var(--muted); margin:22px 0 0}
+  .ticket{position:absolute; left:72px; right:72px; bottom:64px; display:grid; grid-template-columns:1.1fr 1fr}
+  .half{position:relative; padding:28px 34px 30px}
+  .srv{background:var(--surface); border-radius:18px 0 0 18px;
+    mask:radial-gradient(circle at 100% 0,#0000 var(--n),#000 calc(var(--n) + .5px)) 0 0/100% 51% no-repeat, radial-gradient(circle at 100% 100%,#0000 var(--n),#000 calc(var(--n) + .5px)) 0 100%/100% 51% no-repeat}
+  .key{background:var(--stub); border-radius:0 18px 18px 0;
+    mask:radial-gradient(circle at 0 0,#0000 var(--n),#000 calc(var(--n) + .5px)) 0 0/100% 51% no-repeat, radial-gradient(circle at 0 100%,#0000 var(--n),#000 calc(var(--n) + .5px)) 0 100%/100% 51% no-repeat}
+  .key::before{content:""; position:absolute; left:0; top:calc(var(--n) + 10px); bottom:calc(var(--n) + 10px); width:6px; background:radial-gradient(circle,var(--faint) 2px,#0000 2.6px) 50% 0/6px 14px repeat-y}
+  .lbl{font:600 20px/1 var(--sans); color:var(--muted); margin:0 0 14px}
+  .val{font:600 26px/1.2 var(--mono); margin:0; white-space:nowrap}
+  .key .val{color:var(--key)}
+</style>
+</head>
+<body>
+  <div class="mark">
+    <svg width="42" height="28" viewBox="0 0 24 16" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M3 1.5H13A2 2 0 0 0 17 1.5H21A1.5 1.5 0 0 1 22.5 3V13A1.5 1.5 0 0 1 21 14.5H17A2 2 0 0 0 13 14.5H3A1.5 1.5 0 0 1 1.5 13V3A1.5 1.5 0 0 1 3 1.5Z"/><path d="M15 5V11" stroke-dasharray="0 2.6"/></svg>
+    agent-secret
+  </div>
+  <h1>Keep secrets out of your agent's chat.</h1>
+  <p class="sub">Encrypted in your browser. One link, one claim. Open source.</p>
+  <div class="ticket">
+    <div class="half srv">
+      <p class="lbl">Sent to the server</p>
+      <p class="val">agent-secret.xndr.io/k7f2-9m3q</p>
+    </div>
+    <div class="half key">
+      <p class="lbl">Never sent</p>
+      <p class="val">#Q2xvc2VkIGJ5IGRlZmF1bHQ…</p>
+    </div>
+  </div>
+</body>
+</html>

@@ -1,6 +1,7 @@
 import { Hono } from "hono";
 import { generateCode, normalizeCode } from "./codes.js";
-import { FORM_HTML } from "./form.js";
+import { FORM_CSS, FORM_HTML, FORM_JS } from "./form.js";
+import { LLMS_TXT, escapeHtml } from "./agent-docs.js";
 
 // Minimal structural subset of Cloudflare's KVNamespace — lets tests supply an
 // in-memory implementation without depending on workers-types.
@@ -68,7 +69,7 @@ const app = new Hono<{ Bindings: Bindings }>();
 // static probes so neither spends KV.
 app.use("*", async (c, next) => {
   const p = c.req.path;
-  if ((c.req.method === "GET" && p === "/") || p === "/favicon.ico" || p === "/robots.txt") return next();
+  if ((c.req.method === "GET" && p === "/") || p === "/favicon.ico" || p === "/robots.txt" || p === "/llms.txt") return next();
   const limit = Number.parseInt(c.env.RATE_LIMIT_PER_MIN ?? "30", 10) || 30;
   const ip = c.req.header("cf-connecting-ip") ?? "unknown";
   const windowKey = `rl:${ip}:${Math.floor(Date.now() / 60_000)}`;
@@ -86,20 +87,43 @@ app.use("*", async (c, next) => {
 });
 
 // ------------------------------------------------------------------- web form
-app.get("/", (c) => {
+const sha256b64 = async (s: string) =>
+  btoa(String.fromCharCode(...new Uint8Array(await crypto.subtle.digest("SHA-256", new TextEncoder().encode(s)))));
+
+// Hashes of the page's one inline script and one inline style, computed once
+// on the first request (digest is async, so not at module load).
+let formHashes: { js: string; css: string } | undefined;
+
+app.get("/", async (c) => {
+  formHashes ??= { js: await sha256b64(FORM_JS), css: await sha256b64(FORM_CSS) };
   // The plaintext + key live in this page's DOM (all client-side). Lock it down:
-  // no external anything, un-framable, no referrer leakage.
+  // only our own script and style run (by hash), no external anything,
+  // un-framable, no referrer leakage.
   c.header(
     "Content-Security-Policy",
-    "default-src 'none'; script-src 'unsafe-inline'; style-src 'unsafe-inline'; img-src data:; connect-src 'self'; base-uri 'none'; form-action 'none'; frame-ancestors 'none'",
+    `default-src 'none'; script-src 'sha256-${formHashes.js}'; style-src 'sha256-${formHashes.css}'; img-src data:; connect-src 'self'; base-uri 'none'; form-action 'none'; frame-ancestors 'none'`,
   );
   c.header("Referrer-Policy", "no-referrer");
   c.header("X-Content-Type-Options", "nosniff");
-  return c.html(FORM_HTML);
+  const url = new URL(c.req.url);
+  return c.html(
+    FORM_HTML.replaceAll("{{origin}}", escapeHtml(url.origin))
+      .replaceAll("{{host}}", escapeHtml(url.host))
+      .replaceAll("{{scripthash}}", formHashes.js),
+  );
 });
 
 app.get("/favicon.ico", (c) => c.body(null, 204));
-app.get("/robots.txt", (c) => c.text("User-agent: *\nDisallow: /\n"));
+// Link previews (LinkedIn, Slack, ...) honour robots.txt, so the landing page,
+// its preview image and the agent spec stay fetchable; claim links do not.
+app.get("/robots.txt", (c) =>
+  c.text("User-agent: *\nAllow: /$\nAllow: /og.png\nAllow: /llms.txt\nDisallow: /\n"),
+);
+// Plain-text protocol for agents (the llms.txt convention).
+app.get("/llms.txt", (c) => {
+  c.header("Content-Type", "text/plain; charset=utf-8");
+  return c.body(LLMS_TXT.replaceAll("{{origin}}", new URL(c.req.url).origin));
+});
 
 // --------------------------------------------------------------------- create
 // Accepts ONLY ciphertext. The client encrypts before this call; the server
