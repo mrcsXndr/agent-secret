@@ -2,6 +2,10 @@
 
 **Hand your AI agent a secret through a one-time link, so it never sits in the chat transcript.**
 
+[![Release](https://img.shields.io/github/v/release/mrcsXndr/agent-secret?color=285640)](https://github.com/mrcsXndr/agent-secret/releases/latest)
+[![License: MIT](https://img.shields.io/github/license/mrcsXndr/agent-secret?color=285640)](LICENSE)
+[![Live](https://img.shields.io/website?url=https%3A%2F%2Fagent-secret.xndr.io%2Fllms.txt&label=agent-secret.xndr.io&up_message=live&down_message=down)](https://agent-secret.xndr.io)
+
 [agent-secret.xndr.io](https://agent-secret.xndr.io) · [How it works](#how-it-works) · [For AI agents](#for-ai-agents) · [Self-host](#self-host) · MIT
 
 ![agent-secret: the key half of the link never reaches the server](public/og.png)
@@ -136,6 +140,9 @@ Both append to `.env` in the current directory and print only the name.
 | `GET` | `/:code/meta` | Lifecycle only: `{ exists, claimed?, expiresAt? }`. Never ciphertext. |
 | `DELETE` | `/:code` | Destroy now. |
 | `GET` | `/llms.txt` | The agent protocol as plain text. |
+| `GET` | `/robots.txt`, `/sitemap.xml`, `/.well-known/security.txt` | Crawl rules (claim links disallowed), the public pages, the security contact. |
+
+Every secret route answers `Cache-Control: no-store`. Static files (`/og.png`, `/favicon.svg`, `/apple-touch-icon.png`) come from `public/` with cache rules in `public/_headers`.
 
 ## Self-host
 
@@ -156,6 +163,10 @@ Stack: Cloudflare Workers, Hono (the only runtime dependency), Workers KV, WebCr
 ## Security
 
 Please report vulnerabilities privately through [GitHub security advisories](https://github.com/mrcsXndr/agent-secret/security/advisories/new), not in public issues. See [SECURITY.md](SECURITY.md).
+
+## Changelog
+
+See [CHANGELOG.md](CHANGELOG.md).
 
 ## License
 

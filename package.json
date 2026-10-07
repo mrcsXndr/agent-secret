@@ -1,6 +1,6 @@
 {
   "name": "agent-secret",
-  "version": "1.0.0",
+  "version": "1.1.0",
   "description": "Zero-knowledge one-time secret share for AI agents — encrypt in the browser, hand your agent a self-destructing claim link, the server never sees the plaintext.",
   "type": "module",
   "license": "MIT",
