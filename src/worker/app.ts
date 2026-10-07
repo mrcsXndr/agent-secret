@@ -60,6 +60,11 @@ const isB64 = (s: unknown): s is string =>
 const UNFURLERS =
   /TelegramBot|Slackbot|Discordbot|WhatsApp|facebookexternalhit|Twitterbot|LinkedInBot|Googlebot|Google-InspectionTool|bingbot|BingPreview|redditbot|Applebot|SkypeUriPreview|vkShare|Iframely|Embedly|Pinterest/i;
 
+// Public documents served by the Worker itself (the page and /og.png etc. are
+// covered elsewhere). Crawled freely, so they skip the rate limit.
+const PUBLIC_DOCS = new Set(["/favicon.ico", "/robots.txt", "/llms.txt", "/sitemap.xml", "/.well-known/security.txt"]);
+const REPO = "https://github.com/mrcsXndr/agent-secret";
+
 const app = new Hono<{ Bindings: Bindings }>();
 
 // ---------------------------------------------------------------- rate limit
@@ -69,7 +74,7 @@ const app = new Hono<{ Bindings: Bindings }>();
 // static probes so neither spends KV.
 app.use("*", async (c, next) => {
   const p = c.req.path;
-  if ((c.req.method === "GET" && p === "/") || p === "/favicon.ico" || p === "/robots.txt" || p === "/llms.txt") return next();
+  if ((c.req.method === "GET" && p === "/") || PUBLIC_DOCS.has(p)) return next();
   const limit = Number.parseInt(c.env.RATE_LIMIT_PER_MIN ?? "30", 10) || 30;
   const ip = c.req.header("cf-connecting-ip") ?? "unknown";
   const windowKey = `rl:${ip}:${Math.floor(Date.now() / 60_000)}`;
@@ -101,10 +106,11 @@ app.get("/", async (c) => {
   // un-framable, no referrer leakage.
   c.header(
     "Content-Security-Policy",
-    `default-src 'none'; script-src 'sha256-${formHashes.js}'; style-src 'sha256-${formHashes.css}'; img-src data:; connect-src 'self'; base-uri 'none'; form-action 'none'; frame-ancestors 'none'`,
+    `default-src 'none'; script-src 'sha256-${formHashes.js}'; style-src 'sha256-${formHashes.css}'; img-src 'self' data:; connect-src 'self'; base-uri 'none'; form-action 'none'; frame-ancestors 'none'`,
   );
   c.header("Referrer-Policy", "no-referrer");
   c.header("X-Content-Type-Options", "nosniff");
+  c.header("Cache-Control", "public, max-age=300");
   const url = new URL(c.req.url);
   return c.html(
     FORM_HTML.replaceAll("{{origin}}", escapeHtml(url.origin))
@@ -115,13 +121,39 @@ app.get("/", async (c) => {
 
 app.get("/favicon.ico", (c) => c.body(null, 204));
 // Link previews (LinkedIn, Slack, ...) honour robots.txt, so the landing page,
-// its preview image and the agent spec stay fetchable; claim links do not.
-app.get("/robots.txt", (c) =>
-  c.text("User-agent: *\nAllow: /$\nAllow: /og.png\nAllow: /llms.txt\nDisallow: /\n"),
-);
+// its preview image, icons and public docs stay fetchable; claim links do not.
+app.get("/robots.txt", (c) => {
+  c.header("Cache-Control", "public, max-age=3600");
+  const allow = ["/$", "/llms.txt", "/og.png", "/favicon.svg", "/apple-touch-icon.png", "/sitemap.xml", "/.well-known/security.txt"];
+  return c.text(
+    `User-agent: *\n${allow.map((p) => `Allow: ${p}\n`).join("")}Disallow: /\n\nSitemap: ${new URL(c.req.url).origin}/sitemap.xml\n`,
+  );
+});
+// Only the public documents. Claim links are never listed anywhere.
+app.get("/sitemap.xml", (c) => {
+  const o = escapeHtml(new URL(c.req.url).origin);
+  c.header("Content-Type", "application/xml; charset=utf-8");
+  c.header("Cache-Control", "public, max-age=3600");
+  return c.body(
+    `<?xml version="1.0" encoding="UTF-8"?>\n<urlset xmlns="http://www.sitemaps.org/schemas/sitemap/0.9">\n` +
+      `  <url><loc>${o}/</loc></url>\n  <url><loc>${o}/llms.txt</loc></url>\n</urlset>\n`,
+  );
+});
+// RFC 9116. Expires rolls forward with each request: the contact is the repo's
+// advisory form, which stays valid as long as this code is deployed.
+app.get("/.well-known/security.txt", (c) => {
+  const day = 86_400_000;
+  const expires = new Date(Math.floor(Date.now() / day) * day + 180 * day).toISOString();
+  c.header("Cache-Control", "public, max-age=3600");
+  return c.text(
+    `Contact: ${REPO}/security/advisories/new\nExpires: ${expires}\nPolicy: ${REPO}/blob/main/SECURITY.md\n` +
+      `Preferred-Languages: en\nCanonical: ${new URL(c.req.url).origin}/.well-known/security.txt\n`,
+  );
+});
 // Plain-text protocol for agents (the llms.txt convention).
 app.get("/llms.txt", (c) => {
   c.header("Content-Type", "text/plain; charset=utf-8");
+  c.header("Cache-Control", "public, max-age=3600");
   return c.body(LLMS_TXT.replaceAll("{{origin}}", new URL(c.req.url).origin));
 });
 
@@ -231,6 +263,7 @@ app.get("/:code", async (c) => {
 
 // ----------------------------------------------------------------------- burn
 app.delete("/:code", async (c) => {
+  c.header("Cache-Control", "no-store");
   const code = normalizeCode(c.req.param("code"));
   if (!code) return c.json({ error: "bad_request", message: "Malformed claim code." }, 400);
   await c.env.SECRETS.delete(secretKey(code));

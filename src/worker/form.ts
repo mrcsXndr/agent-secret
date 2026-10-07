@@ -258,10 +258,28 @@ pre.code{margin:0; padding:14px 16px; background:var(--field); border-radius:10p
 `;
 
 const MARK_SVG = `<svg width="24" height="16" viewBox="0 0 24 16" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M3 1.5H13A2 2 0 0 0 17 1.5H21A1.5 1.5 0 0 1 22.5 3V13A1.5 1.5 0 0 1 21 14.5H17A2 2 0 0 0 13 14.5H3A1.5 1.5 0 0 1 1.5 13V3A1.5 1.5 0 0 1 3 1.5Z"/><path d="M15 5V11" stroke-dasharray="0 2.6"/></svg>`;
-const FAVICON =
-  "data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24'%3E%3Cpath d='M3 5.5H13A2 2 0 0 0 17 5.5H21A1.5 1.5 0 0 1 22.5 7V17A1.5 1.5 0 0 1 21 18.5H17A2 2 0 0 0 13 18.5H3A1.5 1.5 0 0 1 1.5 17V7A1.5 1.5 0 0 1 3 5.5Z' fill='%23285640'/%3E%3C/svg%3E";
-
 const SRC = "https://github.com/mrcsXndr/agent-secret/blob/main/src/worker";
+const OG_ALT = "agent-secret: the link's key half never reaches the server";
+
+// Structured data for search engines. A data block, not a script: browsers never
+// execute it, so the hash-pinned script-src does not apply. {{origin}} is filled
+// (HTML-escaped) per request, which keeps a hostile Host from closing the tag.
+const JSON_LD = JSON.stringify({
+  "@context": "https://schema.org",
+  "@type": ["SoftwareApplication", "SoftwareSourceCode"],
+  name: "agent-secret",
+  description:
+    "Zero-knowledge one-time secret links for AI agents. Encrypt in the browser, hand the agent one self-destructing link; the server only stores ciphertext.",
+  url: "{{origin}}/",
+  image: "{{origin}}/og.png",
+  applicationCategory: "DeveloperApplication",
+  operatingSystem: "Any (web browser)",
+  offers: { "@type": "Offer", price: "0", priceCurrency: "USD" },
+  license: "https://opensource.org/licenses/MIT",
+  codeRepository: "https://github.com/mrcsXndr/agent-secret",
+  programmingLanguage: "TypeScript",
+  author: { "@type": "Organization", name: "XNDR SLU", url: "https://xndr.io" },
+});
 
 // {{origin}}, {{host}} and {{scripthash}} are filled per request in app.ts.
 export const FORM_HTML = `<!doctype html>
@@ -269,8 +287,9 @@ export const FORM_HTML = `<!doctype html>
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
-<title>agent-secret · one-time secrets for AI agents</title>
+<title>agent-secret · one-time encrypted secret links for AI agents</title>
 <meta name="description" content="Encrypt a secret in your browser and hand your AI agent one self-destructing link. The server only stores ciphertext it cannot open. Open source.">
+<link rel="canonical" href="{{origin}}/">
 <meta name="theme-color" content="#e6eae1" media="(prefers-color-scheme: light)">
 <meta name="theme-color" content="#0d1310" media="(prefers-color-scheme: dark)">
 <meta property="og:type" content="website">
@@ -279,11 +298,19 @@ export const FORM_HTML = `<!doctype html>
 <meta property="og:title" content="agent-secret: keep secrets out of your agent's chat">
 <meta property="og:description" content="Encrypt in your browser, hand your AI agent one link it can claim once. The server only ever holds ciphertext. Open source.">
 <meta property="og:image" content="{{origin}}/og.png">
+<meta property="og:image:type" content="image/png">
 <meta property="og:image:width" content="1200">
 <meta property="og:image:height" content="630">
-<meta property="og:image:alt" content="agent-secret: the link's key half never reaches the server">
+<meta property="og:image:alt" content="${OG_ALT}">
+<meta property="og:locale" content="en_US">
 <meta name="twitter:card" content="summary_large_image">
-<link rel="icon" href="${FAVICON}">
+<meta name="twitter:title" content="agent-secret: keep secrets out of your agent's chat">
+<meta name="twitter:description" content="Encrypt in your browser, hand your AI agent one link it can claim once. The server only ever holds ciphertext. Open source.">
+<meta name="twitter:image" content="{{origin}}/og.png">
+<meta name="twitter:image:alt" content="${OG_ALT}">
+<link rel="icon" href="/favicon.svg" type="image/svg+xml">
+<link rel="apple-touch-icon" href="/apple-touch-icon.png">
+<script type="application/ld+json">${JSON_LD}</script>
 <style>${FORM_CSS}</style>
 </head>
 <body>

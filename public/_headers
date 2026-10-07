@@ -1,0 +1,13 @@
+# Workers static assets (served before the Worker runs). Secret routes are
+# Worker responses and set Cache-Control: no-store themselves (src/worker/app.ts).
+/*
+  X-Content-Type-Options: nosniff
+
+/og.png
+  Cache-Control: public, max-age=86400
+
+/favicon.svg
+  Cache-Control: public, max-age=604800
+
+/apple-touch-icon.png
+  Cache-Control: public, max-age=604800
