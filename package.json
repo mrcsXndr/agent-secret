@@ -1,6 +1,6 @@
 {
   "name": "agent-secret",
-  "version": "1.1.0",
+  "version": "1.1.1",
   "description": "Zero-knowledge one-time secret share for AI agents — encrypt in the browser, hand your agent a self-destructing claim link, the server never sees the plaintext.",
   "type": "module",
   "license": "MIT",
@@ -11,16 +11,17 @@
     "typecheck": "tsc --noEmit",
     "test": "vitest run",
     "dev": "wrangler dev",
-    "deploy": "wrangler deploy"
+    "setup": "node scripts/setup.mjs",
+    "deploy": "node scripts/deploy.mjs"
   },
   "dependencies": {
-    "hono": "^4.6.0"
+    "hono": "^4.13.13"
   },
   "devDependencies": {
     "@types/node": "^22.10.0",
     "typescript": "^5.7.2",
-    "vitest": "^3.0.0",
-    "wrangler": "^4.0.0"
+    "vitest": "^5.0.3",
+    "wrangler": "^4.148.0"
   },
   "keywords": [
     "secrets",

@@ -261,6 +261,16 @@ app.get("/:code", async (c) => {
   return c.json({ ct: record.ct, iv: record.iv });
 });
 
+// ---------------------------------------------------------------------- errors
+// Hono's default handler logs the whole error, and a JSON.parse message quotes
+// part of its input (a stored record). Log the error class only, and never
+// echo anything back.
+app.onError((err, c) => {
+  console.error(`unhandled ${err.name}`);
+  c.header("Cache-Control", "no-store");
+  return c.json({ error: "internal", message: "Internal error." }, 500);
+});
+
 // ----------------------------------------------------------------------- burn
 app.delete("/:code", async (c) => {
   c.header("Cache-Control", "no-store");

@@ -1,0 +1,20 @@
+{
+  "$schema": "./node_modules/wrangler/config-schema.json",
+  // agent-secret is zero-knowledge: the Worker holds no secrets of its own.
+  // This file is the generic template and carries no account-specific values.
+  // `npm run setup` creates your KV namespace and writes wrangler.local.jsonc
+  // (gitignored), which `npm run deploy` uses. Wrangler takes the account from
+  // CLOUDFLARE_ACCOUNT_ID or your `wrangler login`.
+  "name": "agent-secret",
+  "main": "src/worker/index.ts",
+  "compatibility_date": "2026-06-01",
+  // Static files (social image, icons, _headers), served before the Worker runs.
+  "assets": { "directory": "./public" },
+  // No id: setup fills it in the local file. Deploying this file directly
+  // (the Deploy to Cloudflare button does) auto-provisions a namespace.
+  "kv_namespaces": [{ "binding": "SECRETS" }],
+  "vars": {
+    // Requests per minute per IP across the create/claim/meta/burn routes.
+    "RATE_LIMIT_PER_MIN": "30"
+  }
+}

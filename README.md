@@ -148,15 +148,26 @@ Every secret route answers `Cache-Control: no-store`. Static files (`/og.png`, `
 
 One Cloudflare Worker and one KV namespace. There are no server secrets to configure.
 
+[![Deploy to Cloudflare](https://deploy.workers.cloudflare.com/button)](https://deploy.workers.cloudflare.com/?url=https://github.com/mrcsXndr/agent-secret)
+
+The button copies the repo to your GitHub account, creates the KV namespace and deploys to a `workers.dev` URL.
+
+### Deploy your own in 3 commands
+
 ```console
 git clone https://github.com/mrcsXndr/agent-secret && cd agent-secret
-npm install
-npx wrangler kv namespace create SECRETS   # put the printed id in wrangler.toml
-# in wrangler.toml: set your own account_id, and point [[routes]] at your domain (or remove it)
-npx wrangler deploy
+npm i && npm run setup     # logs in to Cloudflare if needed, creates your KV namespace
+npm run deploy             # prints your https://agent-secret.<you>.workers.dev URL
 ```
 
-Local: `npm run dev` (http://localhost:8787), `npm test`, `npm run typecheck`. `RATE_LIMIT_PER_MIN` in `wrangler.toml` (default `30`) is the only setting. `public/og.png` is the social preview image, rendered from [`docs/launch/og.html`](docs/launch/og.html).
+`wrangler.jsonc` is the shared template and holds nothing account-specific. `npm run setup` writes your two values into `wrangler.local.jsonc` (gitignored), which `npm run deploy` uses:
+
+- **KV namespace id**: created for you, or reuse one with `npm run setup -- --kv-id <id>`.
+- **Custom domain** (optional): `npm run setup -- --domain secrets.example.com` for a domain on your Cloudflare account. Without it you get the `workers.dev` URL.
+
+Add `--force` to rewrite an existing `wrangler.local.jsonc`. With several Cloudflare accounts, set `CLOUDFLARE_ACCOUNT_ID` first; setup records it in the local file.
+
+Local: `npm run dev` (http://localhost:8787, local KV), `npm test`, `npm run typecheck`. `RATE_LIMIT_PER_MIN` in `wrangler.jsonc` (default `30`) is the only setting. `public/og.png` is the social preview image, rendered from [`docs/launch/og.html`](docs/launch/og.html).
 
 Stack: Cloudflare Workers, Hono (the only runtime dependency), Workers KV, WebCrypto, TypeScript, Vitest.
 

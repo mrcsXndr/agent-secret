@@ -413,7 +413,7 @@ export const FORM_HTML = `<!doctype html>
     <li><b>Read the code.</b> View this page's source: one inline script, no external files, no trackers. The server is <a href="${SRC}/app.ts">app.ts</a>, about 200 lines.</li>
     <li><b>Watch the network tab.</b> Create a test secret. The one POST carries <code>ct</code>, <code>iv</code> and <code>ttl</code>, nothing else.</li>
     <li><b>Read the headers.</b> The Content-Security-Policy lets exactly one script run, by hash: <code>sha256-{{scripthash}}</code>. <code>connect-src 'self'</code> means the page cannot talk to any other origin.</li>
-    <li><b>Run your own.</b> One Cloudflare Worker and one KV namespace, no server secrets. <a href="https://github.com/mrcsXndr/agent-secret#self-host">Self-host in five commands</a>.</li>
+    <li><b>Run your own.</b> One Cloudflare Worker and one KV namespace, no server secrets. <a href="https://github.com/mrcsXndr/agent-secret#deploy-your-own-in-3-commands">Deploy your own in three commands</a>.</li>
   </ul>
 </section>
 

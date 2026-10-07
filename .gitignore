@@ -2,5 +2,6 @@ node_modules/
 dist/
 .wrangler/
 .dev.vars
+wrangler.local.jsonc
 .env
 *.log

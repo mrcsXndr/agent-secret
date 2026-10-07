@@ -2,6 +2,16 @@
 
 All notable changes to this project. Versions follow [Semantic Versioning](https://semver.org/).
 
+## [1.1.1] - 2026-10-07
+
+### Changed
+- Config moves from `wrangler.toml` to `wrangler.jsonc` with `$schema` (Cloudflare's recommended format; the TypeScript config is still in open beta). The committed file is a template with no account id, KV namespace id or route.
+- `npm run setup` creates your KV namespace and writes `wrangler.local.jsonc` (gitignored); `npm run deploy` deploys it. Self-hosting is three commands, and there is a Deploy to Cloudflare button.
+- Upgraded to wrangler 4.148, Hono 4.13 and Vitest 5.
+
+### Fixed
+- An unexpected error now returns a generic `500` with `no-store`, and logs only the error class. The default handler logged the full error, which could quote the start of a stored record.
+
 ## [1.1.0] - 2026-10-07
 
 The protocol and API are unchanged; links made with 1.0.0 claim the same way.
@@ -31,5 +41,6 @@ First release.
 - Expiry from 5 minutes to 24 hours, soft per-IP rate limit, a CSP that allows no external sources, and `no-store` on secret responses.
 - Cloudflare Worker (Hono) + Workers KV, no server secrets.
 
+[1.1.1]: https://github.com/mrcsXndr/agent-secret/compare/v1.1.0...v1.1.1
 [1.1.0]: https://github.com/mrcsXndr/agent-secret/compare/v1.0.0...v1.1.0
 [1.0.0]: https://github.com/mrcsXndr/agent-secret/releases/tag/v1.0.0

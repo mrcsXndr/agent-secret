@@ -222,3 +222,21 @@ describe("form + rate limiting", () => {
     expect(other.status).toBe(200);
   });
 });
+
+describe("errors", () => {
+  it("answers an unexpected failure with a generic 500 and logs no record content", async () => {
+    const env = makeEnv();
+    // V8 quotes the first characters of unparsable input in the error message.
+    const marker = "Zq9CTMARK1";
+    await env.SECRETS.put("secret:aaaa-bbbb", `${marker} is not a record`);
+    const logged: string[] = [];
+    const spy = vi.spyOn(console, "error").mockImplementation((...a: unknown[]) => void logged.push(a.map(String).join(" ")));
+    const res = await app.request("/aaaa-bbbb", undefined, env);
+    spy.mockRestore();
+    expect(res.status).toBe(500);
+    expect(res.headers.get("cache-control")).toBe("no-store");
+    expect(await res.text()).not.toContain(marker);
+    expect(logged.length).toBeGreaterThan(0);
+    expect(logged.join("\n")).not.toContain(marker);
+  });
+});
