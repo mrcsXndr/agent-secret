@@ -8,7 +8,7 @@
 
 [agent-secret.xndr.io](https://agent-secret.xndr.io) · [How it works](#how-it-works) · [For AI agents](#for-ai-agents) · [Self-host](#self-host) · MIT
 
-![agent-secret: the key half of the link never reaches the server](public/og.png)
+[![The agent-secret page: paste a secret, pick how long it stays claimable, encrypt and make a link](docs/screenshot.png)](https://agent-secret.xndr.io)
 
 ## Why
 
