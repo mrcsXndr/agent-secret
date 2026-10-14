@@ -31,16 +31,9 @@ export const FORM_JS = `
     return fetch('/', { method:'POST', headers:{ 'content-type':'application/json' }, body: JSON.stringify({ ct: enc.ct, iv: enc.iv, ttl: ttl }) });
   }
 
-  // The copy block: one spec line, then the link on its own last line.
+  // The copy block: one short line, then the link on its own last line. The how-to lives at /how.
   function specLine(name, origin){
-    var dest = name
-      ? 'Save the plaintext as ' + name + ' in your env or a gitignored .env'
-      : 'Save the plaintext where you keep secrets (env or a gitignored .env)';
-    return (name ? name + ': one-time' : 'One-time') + ' secret from agent-secret. '
-      + 'GET the URL on the last line without its #fragment, using your own User-Agent; '
-      + 'it answers once with JSON {ct,iv} (base64), then 410. '
-      + 'Decrypt AES-256-GCM: key = base64url-decode(#fragment), nonce = iv, ct ends with the 16-byte tag. '
-      + dest + '; never print it. Full spec: ' + origin + '/llms.txt';
+    return (name ? name + ': one-time' : 'One-time') + ' secret. Read ' + origin + '/how, then claim the link below; it works once.';
   }
 
   function span(cls, text){ var s = document.createElement('span'); s.className = cls; s.textContent = text; return s; }
@@ -109,26 +102,20 @@ export const FORM_JS = `
 
 const GRAIN_LIGHT =
   "url(\"data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='180' height='180'%3E%3Cfilter id='n'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='.85' numOctaves='2' stitchTiles='stitch'/%3E%3CfeColorMatrix values='0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 .1 0 0 0 0'/%3E%3C/filter%3E%3Crect width='100%25' height='100%25' filter='url(%23n)'/%3E%3C/svg%3E\")";
-const GRAIN_DARK =
-  "url(\"data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='180' height='180'%3E%3Cfilter id='n'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='.85' numOctaves='2' stitchTiles='stitch'/%3E%3CfeColorMatrix values='0 0 0 0 1 0 0 0 0 1 0 0 0 0 1 .07 0 0 0 0'/%3E%3C/filter%3E%3Crect width='100%25' height='100%25' filter='url(%23n)'/%3E%3C/svg%3E\")";
 
+// Sealed-envelope palette: blue-black ink on rose onionskin, the key half in
+// sealing-wax oxblood. Light only. The display face is a condensed industrial
+// grotesque (DIN on Apple, Bahnschrift on Windows), like a stamped vault tag.
 export const FORM_CSS = `
 :root{
-  color-scheme:light dark;
-  --bg:#e6eae1; --surface:#f1f4ed; --field:#fafbf8; --stub:#d2ddd0;
-  --ink:#131d17; --muted:#4a564e; --faint:#5f6a63; --key:#285640;
-  --edge:#131d1729; --edge2:#131d1714; --grain:${GRAIN_LIGHT};
-  --serif:"Iowan Old Style","Sitka Heading","Sitka Text",Charter,"Bitstream Charter","Palatino Linotype",Georgia,serif;
+  color-scheme:light;
+  --bg:#f4e8e3; --surface:#fcf7f5; --field:#fffdfc; --stub:#f1d3c9;
+  --ink:#1b1e2e; --muted:#525061; --faint:#625e6d; --key:#8a2c1f;
+  --edge:#1b1e2e29; --edge2:#1b1e2e14; --grain:${GRAIN_LIGHT};
+  --display:"DIN Condensed","Bahnschrift","Roboto Condensed","Arial Narrow",sans-serif-condensed,system-ui,sans-serif;
   --sans:system-ui,-apple-system,"Segoe UI",Roboto,sans-serif;
   --mono:ui-monospace,"SF Mono","Cascadia Mono",Menlo,Consolas,monospace;
   --n:11px;
-}
-@media (prefers-color-scheme:dark){
-  :root{
-    --bg:#0d1310; --surface:#18221c; --field:#0a0f0c; --stub:#203328;
-    --ink:#e1e8e0; --muted:#9ba79f; --faint:#748078; --key:#9ccbaf;
-    --edge:#e1e8e029; --edge2:#e1e8e012; --grain:${GRAIN_DARK};
-  }
 }
 *{box-sizing:border-box}
 [hidden]{display:none!important}
@@ -145,23 +132,27 @@ code{font-family:var(--mono); font-size:.88em; overflow-wrap:anywhere}
 @media (min-width:600px){ .col{padding:0 28px} }
 
 .top{display:flex; align-items:center; justify-content:space-between; gap:1rem; padding:20px 0 0}
-.mark{display:inline-flex; align-items:center; gap:.55rem; font:600 1.2rem/1 var(--serif); color:var(--ink); text-decoration:none; letter-spacing:.005em}
+.mark{display:inline-flex; align-items:center; gap:.55rem; font:700 1.35rem/1 var(--display); font-stretch:semi-condensed; color:var(--ink); text-decoration:none; letter-spacing:.01em}
 .mark svg{flex:none; color:var(--key)}
 .top nav{display:flex; gap:1.1rem; font-size:.92rem}
 .top nav a{color:var(--muted); text-decoration:none}
 .top nav a:hover{color:var(--ink)}
 @media (max-width:479px){ .top nav .gh{display:none} }
 
-h1{font:500 clamp(2.15rem,7vw,3.3rem)/1.06 var(--serif); letter-spacing:-.015em; margin:2.6rem 0 1rem; max-width:15ch; text-wrap:balance}
+h1{font:700 clamp(2.6rem,10vw,4.4rem)/.98 var(--display); font-stretch:semi-condensed; letter-spacing:.005em; margin:2.6rem 0 1.1rem; max-width:16ch; text-wrap:balance}
 .lede{color:var(--muted); font-size:1.06rem; margin:0 0 1.8rem; max-width:34rem}
-h2{font:500 clamp(1.7rem,5vw,2.3rem)/1.12 var(--serif); letter-spacing:-.01em; margin:0 0 .8rem}
+h2{font:700 clamp(1.9rem,6vw,2.6rem)/1.05 var(--display); font-stretch:semi-condensed; letter-spacing:.005em; margin:0 0 .8rem}
 h3{font:650 1.02rem/1.3 var(--sans); margin:2.4rem 0 .7rem}
 section{padding-top:4.5rem}
 .tool{padding-top:0}
 p{margin:0 0 1rem}
 
-.panel{background:var(--surface); border-radius:14px; padding:20px; box-shadow:inset 0 0 0 1px var(--edge2)}
-@media (min-width:600px){ .panel{padding:26px 28px} }
+/* The form is a claim slip: punched top corners and a perforation, the same cut as the key stub below. */
+.panel{--n:14px; position:relative; background:var(--surface); border-radius:0 0 14px 14px; padding:28px 20px 20px;
+  -webkit-mask:radial-gradient(circle at 0 0,#0000 var(--n),#000 calc(var(--n) + .5px)) 0 0/51% 100% no-repeat, radial-gradient(circle at 100% 0,#0000 var(--n),#000 calc(var(--n) + .5px)) 100% 0/51% 100% no-repeat;
+  mask:radial-gradient(circle at 0 0,#0000 var(--n),#000 calc(var(--n) + .5px)) 0 0/51% 100% no-repeat, radial-gradient(circle at 100% 0,#0000 var(--n),#000 calc(var(--n) + .5px)) 100% 0/51% 100% no-repeat}
+.panel::before{content:""; position:absolute; left:calc(var(--n) + 8px); right:calc(var(--n) + 8px); top:0; height:4px; background:radial-gradient(circle,var(--faint) 1.3px,#0000 1.8px) 0 50%/10px 4px repeat-x}
+@media (min-width:600px){ .panel{padding:32px 28px 26px} }
 label,legend{display:block; font-weight:600; font-size:.9rem; margin:0 0 .45rem; padding:0}
 .opt{font-weight:400; color:var(--faint); margin-left:.3rem}
 .fld{margin:0 0 1.15rem}
@@ -181,8 +172,7 @@ textarea:focus,input[type=text]:focus{outline:2px solid var(--key); outline-offs
 .go{display:block; width:100%; padding:.9rem 1rem; font:600 1rem/1.2 var(--sans); color:var(--bg); background:var(--ink); border:0; border-radius:9px; cursor:pointer; transition:background-color .15s}
 .go:hover{background:var(--key)}
 .go[disabled]{cursor:progress; background:var(--muted)}
-.err{color:#a3361a; font-size:.9rem; margin:.7rem 0 0; min-height:0}
-@media (prefers-color-scheme:dark){ .err{color:#f0a48a} }
+.err{color:#a3241a; font-size:.9rem; margin:.7rem 0 0; min-height:0}
 .err:empty{display:none}
 .note{color:var(--muted); font-size:.88rem; margin:.9rem 0 0; text-align:center; text-wrap:balance}
 
@@ -193,6 +183,7 @@ textarea:focus,input[type=text]:focus{outline:2px solid var(--key); outline-offs
 .copy.quiet{background:transparent; color:var(--ink); box-shadow:inset 0 0 0 1px var(--edge); padding:.45rem .75rem; font-size:.84rem}
 .copy.quiet:hover,.copy.quiet.done{background:var(--stub)}
 .block{margin:0; padding:14px 16px; background:var(--field); border-radius:10px; box-shadow:inset 0 0 0 1px var(--edge2); font:.84rem/1.6 var(--mono); color:var(--muted); white-space:pre-wrap; overflow-wrap:anywhere}
+.block .srv,.block .key{word-break:break-all}
 .block .srv{color:var(--ink); font-weight:600}
 .block .key{color:var(--key); font-weight:600; background:var(--stub); border-radius:4px; padding:1px 3px; -webkit-box-decoration-break:clone; box-decoration-break:clone}
 .facts{color:var(--muted); font-size:.92rem; margin:1rem 0 1.1rem}
@@ -228,7 +219,7 @@ textarea:focus,input[type=text]:focus{outline:2px solid var(--key); outline-offs
 
 ol.trip{list-style:none; counter-reset:s; padding:0; margin:0}
 ol.trip li{counter-increment:s; display:grid; grid-template-columns:1.9rem 1fr; gap:.3rem; margin:0 0 .85rem}
-ol.trip li::before{content:counter(s); font:500 1.3rem/1.25 var(--serif); font-variant-numeric:lining-nums; color:var(--key)}
+ol.trip li::before{content:counter(s); font:700 1.45rem/1.15 var(--display); font-stretch:semi-condensed; font-variant-numeric:lining-nums; color:var(--key)}
 
 table{width:100%; border-collapse:collapse; font-size:.92rem}
 caption{caption-side:bottom; text-align:left; color:var(--muted); font-size:.88rem; padding-top:.8rem}
@@ -255,6 +246,11 @@ pre.code{margin:0; padding:14px 16px; background:var(--field); border-radius:10p
 
 .foot{margin:5rem 0 0; padding:0 0 2.5rem; color:var(--muted); font-size:.88rem; text-align:center}
 .foot p{margin:0 0 .35rem}
+.foot .by{margin-top:1.6rem}
+.foot .by a{color:var(--muted); text-decoration:none}
+.foot .by a:hover{color:var(--key)}
+.foot .by b{font:700 1.05rem/1 var(--display); font-stretch:semi-condensed; letter-spacing:.08em; color:var(--ink); margin-left:.2rem}
+.foot .by a:hover b{color:var(--key)}
 `;
 
 const MARK_SVG = `<svg width="24" height="16" viewBox="0 0 24 16" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M3 1.5H13A2 2 0 0 0 17 1.5H21A1.5 1.5 0 0 1 22.5 3V13A1.5 1.5 0 0 1 21 14.5H17A2 2 0 0 0 13 14.5H3A1.5 1.5 0 0 1 1.5 13V3A1.5 1.5 0 0 1 3 1.5Z"/><path d="M15 5V11" stroke-dasharray="0 2.6"/></svg>`;
@@ -290,8 +286,7 @@ export const FORM_HTML = `<!doctype html>
 <title>agent-secret · one-time encrypted secret links for AI agents</title>
 <meta name="description" content="Encrypt a secret in your browser and hand your AI agent one self-destructing link. The server only stores ciphertext it cannot open. Open source.">
 <link rel="canonical" href="{{origin}}/">
-<meta name="theme-color" content="#e6eae1" media="(prefers-color-scheme: light)">
-<meta name="theme-color" content="#0d1310" media="(prefers-color-scheme: dark)">
+<meta name="theme-color" content="#f4e8e3">
 <meta property="og:type" content="website">
 <meta property="og:site_name" content="agent-secret">
 <meta property="og:url" content="{{origin}}/">
@@ -447,7 +442,8 @@ export const FORM_HTML = `<!doctype html>
 
 <footer class="foot">
   <p>Open source under the MIT license. <a href="https://github.com/mrcsXndr/agent-secret">Source on GitHub</a>.</p>
-  <p>Found a security issue? <a href="https://github.com/mrcsXndr/agent-secret/security/advisories/new">Report it privately</a>. Made by <a href="https://xndr.io">XNDR</a>.</p>
+  <p>Found a security issue? <a href="https://github.com/mrcsXndr/agent-secret/security/advisories/new">Report it privately</a>.</p>
+  <p class="by"><a href="https://xndr.io">Powered by<b>XNDR</b></a></p>
 </footer>
 </div>
 <script>${FORM_JS}</script>

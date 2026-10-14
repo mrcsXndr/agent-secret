@@ -2,7 +2,7 @@ import { describe, it, expect } from "vitest";
 import { readFileSync } from "node:fs";
 import { createHash } from "node:crypto";
 import app from "../src/worker/app.js";
-import { FORM_HTML } from "../src/worker/form.js";
+import { FORM_HTML, FORM_JS } from "../src/worker/form.js";
 import { SNIPPET_PY, SNIPPET_SH } from "../src/worker/agent-docs.js";
 import { makeEnv } from "./helpers.js";
 
@@ -93,6 +93,44 @@ describe("agent instructions", () => {
     }
   });
 
+  it("serves /how, the short doc URL, as the same plain text without ever touching KV", async () => {
+    const kvCalls: string[] = [];
+    const spyKV = {
+      get: async () => {
+        kvCalls.push("get");
+        return null;
+      },
+      put: async () => void kvCalls.push("put"),
+      delete: async () => void kvCalls.push("delete"),
+    };
+    const env = makeEnv({ SECRETS: spyKV, RATE_LIMIT_PER_MIN: "1" });
+    const llms = await (await app.request(`${ORIGIN}/llms.txt`, undefined, env)).text();
+    for (let i = 0; i < 3; i++) {
+      const res = await app.request(`${ORIGIN}/how`, undefined, env);
+      expect(res.status).toBe(200);
+      expect(res.headers.get("content-type")).toContain("text/plain");
+      expect(res.headers.get("cache-control")).toMatch(/^public/);
+      expect(await res.text()).toBe(llms);
+    }
+    expect(kvCalls).toEqual([]);
+  });
+
+  it("copy block is one short line pointing at /how, then the link", () => {
+    // Run the page's own specLine (it lives inside FORM_JS, so the CSP hash covers it).
+    const src = /function specLine\(name, origin\)\{[\s\S]*?\n {2}\}/.exec(FORM_JS)![0];
+    const specLine = new Function(`${src}; return specLine;`)() as (name: string, origin: string) => string;
+    for (const name of ["OPENAI_API_KEY", ""]) {
+      const line = specLine(name, ORIGIN);
+      expect(line).not.toContain("\n");
+      expect(line.length - ORIGIN.length - name.length).toBeLessThanOrEqual(80); // was ~400 chars of spec
+      expect(line).toContain(`${ORIGIN}/how`);
+      if (name) expect(line.startsWith(`${name}: `)).toBe(true);
+    }
+    // The link still goes on its own last line, key in the fragment.
+    expect(FORM_JS).toContain("block.textContent = specLine(name, location.origin) + '\\n';");
+    expect(FORM_JS).toContain("block.appendChild(span('key', '#' + enc.key));");
+  });
+
   it("README carries the exact same snippets", () => {
     const readme = read("../README.md");
     expect(readme).toContain(SNIPPET_SH);
@@ -116,9 +154,10 @@ describe("SEO and public documents", () => {
       expect(body).toContain(`Allow: ${p}\n`);
     }
     expect(body).toContain(`Sitemap: ${ORIGIN}/sitemap.xml\n`);
-    // Every rule is an exact public path; nothing could match a claim code like /k7f2-9m3q.
+    expect(body).toContain("Allow: /how$\n");
+    // Every rule is an exact public path; nothing could match a claim code like /k7f2-9m3q (or /howa-bcde).
     const allows = [...body.matchAll(/^Allow: (\S+)$/gm)].map((m) => m[1]!);
-    expect(allows.every((p) => p === "/$" || /\.[a-z]+$/.test(p))).toBe(true);
+    expect(allows.every((p) => p.endsWith("$") || /\.[a-z]+$/.test(p))).toBe(true);
   });
 
   it("sitemap.xml lists only the page and /llms.txt, never a claim link", async () => {
@@ -144,7 +183,7 @@ describe("SEO and public documents", () => {
   it("keeps the public documents outside the rate limit", async () => {
     const env = makeEnv({ RATE_LIMIT_PER_MIN: "1" });
     for (let i = 0; i < 3; i++) {
-      for (const p of ["/robots.txt", "/sitemap.xml", "/.well-known/security.txt"]) {
+      for (const p of ["/robots.txt", "/sitemap.xml", "/.well-known/security.txt", "/how"]) {
         expect((await get(p, env)).status, p).toBe(200);
       }
     }

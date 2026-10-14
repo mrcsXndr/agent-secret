@@ -7,9 +7,9 @@
 <title>agent-secret og image</title>
 <style>
   :root{
-    --bg:#e6eae1; --surface:#f1f4ed; --stub:#d2ddd0;
-    --ink:#131d17; --muted:#4a564e; --faint:#6d7870; --key:#285640;
-    --serif:"Iowan Old Style","Sitka Heading","Sitka Text",Charter,"Palatino Linotype",Georgia,serif;
+    --bg:#f4e8e3; --surface:#fcf7f5; --stub:#f1d3c9;
+    --ink:#1b1e2e; --muted:#525061; --faint:#625e6d; --key:#8a2c1f;
+    --display:"DIN Condensed","Bahnschrift","Roboto Condensed","Arial Narrow",sans-serif;
     --sans:system-ui,-apple-system,"Segoe UI",Roboto,sans-serif;
     --mono:ui-monospace,"SF Mono","Cascadia Mono",Menlo,Consolas,monospace;
     --n:16px;
@@ -21,9 +21,9 @@
     background:url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='180' height='180'%3E%3Cfilter id='n'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='.85' numOctaves='2' stitchTiles='stitch'/%3E%3CfeColorMatrix values='0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 .1 0 0 0 0'/%3E%3C/filter%3E%3Crect width='100%25' height='100%25' filter='url(%23n)'/%3E%3C/svg%3E"), var(--bg);
     padding:64px 72px 0;
   }
-  .mark{display:flex; align-items:center; gap:14px; font:600 34px/1 var(--serif)}
+  .mark{display:flex; align-items:center; gap:14px; font:700 38px/1 var(--display); font-stretch:semi-condensed}
   .mark svg{color:var(--key)}
-  h1{font:500 76px/1.04 var(--serif); letter-spacing:-.015em; margin:46px 0 0; max-width:900px}
+  h1{font:700 92px/.98 var(--display); font-stretch:semi-condensed; letter-spacing:.005em; margin:42px 0 0; max-width:900px}
   .sub{font:400 28px/1.35 var(--sans); color:var(--muted); margin:22px 0 0}
   .ticket{position:absolute; left:72px; right:72px; bottom:64px; display:grid; grid-template-columns:1.1fr 1fr}
   .half{position:relative; padding:28px 34px 30px}

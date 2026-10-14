@@ -71,6 +71,14 @@ describe("claim (single GET at /<code>, burns on read)", () => {
     expect(((await second.json()) as { error: string }).error).toBe("already_claimed");
   });
 
+  it("points the claimer at the /how protocol doc with a Link header", async () => {
+    const env = makeEnv();
+    const { data } = await share(env, "v");
+    const res = await app.request(`https://secret.example.com/${data.code}`, undefined, env);
+    expect(res.status).toBe(200);
+    expect(res.headers.get("link")).toBe('<https://secret.example.com/how>; rel="help"');
+  });
+
   it("404s on an unknown code", async () => {
     const env = makeEnv();
     const res = await app.request("/aaaa-bbbb", undefined, env);

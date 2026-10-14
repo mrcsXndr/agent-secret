@@ -2,8 +2,8 @@
 
 **Hand your AI agent a secret through a one-time link, so it never sits in the chat transcript.**
 
-[![Release](https://img.shields.io/github/v/release/mrcsXndr/agent-secret?color=285640)](https://github.com/mrcsXndr/agent-secret/releases/latest)
-[![License: MIT](https://img.shields.io/github/license/mrcsXndr/agent-secret?color=285640)](LICENSE)
+[![Release](https://img.shields.io/github/v/release/mrcsXndr/agent-secret?color=8a2c1f)](https://github.com/mrcsXndr/agent-secret/releases/latest)
+[![License: MIT](https://img.shields.io/github/license/mrcsXndr/agent-secret?color=8a2c1f)](LICENSE)
 [![Live](https://img.shields.io/website?url=https%3A%2F%2Fagent-secret.xndr.io%2Fllms.txt&label=agent-secret.xndr.io&up_message=live&down_message=down)](https://agent-secret.xndr.io)
 
 [agent-secret.xndr.io](https://agent-secret.xndr.io) · [How it works](#how-it-works) · [For AI agents](#for-ai-agents) · [Self-host](#self-host) · MIT
@@ -19,14 +19,14 @@ agent-secret moves that handoff out of the chat. You encrypt the secret in your 
 ## 30-second version
 
 1. Open [agent-secret.xndr.io](https://agent-secret.xndr.io), paste the secret, optionally name it (`OPENAI_API_KEY`), pick how long it stays claimable.
-2. Click **Encrypt and make link**, then **Copy**. You get one spec line and one link:
+2. Click **Encrypt and make link**, then **Copy**. You get one short line and one link:
 
    ```
-   OPENAI_API_KEY: one-time secret from agent-secret. GET the URL on the last line without its #fragment, using your own User-Agent; it answers once with JSON {ct,iv} (base64), then 410. Decrypt AES-256-GCM: key = base64url-decode(#fragment), nonce = iv, ct ends with the 16-byte tag. Save the plaintext as OPENAI_API_KEY in your env or a gitignored .env; never print it. Full spec: https://agent-secret.xndr.io/llms.txt
+   OPENAI_API_KEY: one-time secret. Read https://agent-secret.xndr.io/how, then claim the link below; it works once.
    https://agent-secret.xndr.io/k7f2-9m3q#Q2xvc2VkIGJ5IGRlZmF1bHQuIE9wZW4gYnkgY2hvaWNl
    ```
 
-3. Paste that to your agent. It claims the link, saves the value and confirms by name.
+3. Paste that to your agent. It reads the protocol at `/how` (a static page that never touches a secret), claims the link, saves the value and confirms by name.
 
 ## How it works
 
@@ -70,7 +70,7 @@ The server also learns the ciphertext length (secret length + 16 bytes). Link-pr
 
 ## For AI agents
 
-Given a link `https://<host>/<code>#<key>`. The same text is served as plain text at [`/llms.txt`](https://agent-secret.xndr.io/llms.txt).
+Given a link `https://<host>/<code>#<key>`. The same text is served as plain text at [`/how`](https://agent-secret.xndr.io/how) and [`/llms.txt`](https://agent-secret.xndr.io/llms.txt).
 
 1. Split the link at `#`. URL = the part before, key = the part after. Never send the key anywhere.
 2. GET the URL once, with a User-Agent of your own (e.g. `agent-secret-client/1.0`). That read burns the secret.
@@ -136,10 +136,10 @@ Both append to `.env` in the current directory and print only the name.
 |---|---|---|
 | `GET` | `/` | The page. All crypto runs here. |
 | `POST` | `/` | Create. Body `{ ct, iv, ttl? }` (base64). Returns `{ code, expiresAt, ttl }`. |
-| `GET` | `/:code` | Claim and burn. Returns `{ ct, iv }` once, then `410`. Preview bots get a note. |
+| `GET` | `/:code` | Claim and burn. Returns `{ ct, iv }` once, then `410`. Preview bots get a note. Every answer carries `Link: </how>; rel="help"`. |
 | `GET` | `/:code/meta` | Lifecycle only: `{ exists, claimed?, expiresAt? }`. Never ciphertext. |
 | `DELETE` | `/:code` | Destroy now. |
-| `GET` | `/llms.txt` | The agent protocol as plain text. |
+| `GET` | `/how`, `/llms.txt` | The agent protocol as plain text (the copy block links `/how`). Never reads KV. |
 | `GET` | `/robots.txt`, `/sitemap.xml`, `/.well-known/security.txt` | Crawl rules (claim links disallowed), the public pages, the security contact. |
 
 Every secret route answers `Cache-Control: no-store`. Static files (`/og.png`, `/favicon.svg`, `/apple-touch-icon.png`) come from `public/` with cache rules in `public/_headers`.

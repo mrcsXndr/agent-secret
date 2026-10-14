@@ -62,7 +62,7 @@ const UNFURLERS =
 
 // Public documents served by the Worker itself (the page and /og.png etc. are
 // covered elsewhere). Crawled freely, so they skip the rate limit.
-const PUBLIC_DOCS = new Set(["/favicon.ico", "/robots.txt", "/llms.txt", "/sitemap.xml", "/.well-known/security.txt"]);
+const PUBLIC_DOCS = new Set(["/favicon.ico", "/robots.txt", "/llms.txt", "/how", "/sitemap.xml", "/.well-known/security.txt"]);
 const REPO = "https://github.com/mrcsXndr/agent-secret";
 
 const app = new Hono<{ Bindings: Bindings }>();
@@ -124,7 +124,8 @@ app.get("/favicon.ico", (c) => c.body(null, 204));
 // its preview image, icons and public docs stay fetchable; claim links do not.
 app.get("/robots.txt", (c) => {
   c.header("Cache-Control", "public, max-age=3600");
-  const allow = ["/$", "/llms.txt", "/og.png", "/favicon.svg", "/apple-touch-icon.png", "/sitemap.xml", "/.well-known/security.txt"];
+  // "/how$" is anchored: a bare "/how" prefix would also match claim codes such as /howa-bcde.
+  const allow = ["/$", "/llms.txt", "/how$", "/og.png", "/favicon.svg", "/apple-touch-icon.png", "/sitemap.xml", "/.well-known/security.txt"];
   return c.text(
     `User-agent: *\n${allow.map((p) => `Allow: ${p}\n`).join("")}Disallow: /\n\nSitemap: ${new URL(c.req.url).origin}/sitemap.xml\n`,
   );
@@ -150,12 +151,15 @@ app.get("/.well-known/security.txt", (c) => {
       `Preferred-Languages: en\nCanonical: ${new URL(c.req.url).origin}/.well-known/security.txt\n`,
   );
 });
-// Plain-text protocol for agents (the llms.txt convention).
-app.get("/llms.txt", (c) => {
-  c.header("Content-Type", "text/plain; charset=utf-8");
-  c.header("Cache-Control", "public, max-age=3600");
-  return c.body(LLMS_TXT.replaceAll("{{origin}}", new URL(c.req.url).origin));
-});
+// Plain-text protocol for agents (the llms.txt convention). /how is the same
+// document under the short URL the copy block points at. Static: never reads KV.
+for (const path of ["/llms.txt", "/how"]) {
+  app.get(path, (c) => {
+    c.header("Content-Type", "text/plain; charset=utf-8");
+    c.header("Cache-Control", "public, max-age=3600");
+    return c.body(LLMS_TXT.replaceAll("{{origin}}", new URL(c.req.url).origin));
+  });
+}
 
 // --------------------------------------------------------------------- create
 // Accepts ONLY ciphertext. The client encrypts before this call; the server
@@ -225,6 +229,8 @@ app.get("/:code/meta", async (c) => {
 // opaque bytes and can never assist decryption. URL is just /<code>.
 app.get("/:code", async (c) => {
   c.header("Cache-Control", "no-store");
+  // An agent that GETs the link before reading the protocol still learns where it is.
+  c.header("Link", `<${new URL(c.req.url).origin}/how>; rel="help"`);
   const code = normalizeCode(c.req.param("code"));
   if (!code) return c.json({ error: "not_found", message: "No such secret." }, 404);
 
