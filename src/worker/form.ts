@@ -247,15 +247,51 @@ pre.code{margin:0; padding:14px 16px; background:var(--field); border-radius:10p
 .foot{margin:5rem 0 0; padding:0 0 2.5rem; color:var(--muted); font-size:.88rem; text-align:center}
 .foot p{margin:0 0 .35rem}
 .foot .by{margin-top:1.6rem}
-.foot .by a{color:var(--muted); text-decoration:none}
-.foot .by a:hover{color:var(--key)}
-.foot .by b{font:700 1.05rem/1 var(--display); font-stretch:semi-condensed; letter-spacing:.08em; color:var(--ink); margin-left:.2rem}
-.foot .by a:hover b{color:var(--key)}
+.foot .by a{display:inline-flex; align-items:center; gap:.45rem; color:var(--muted); text-decoration:none}
+.foot .by .xndr{display:block; width:auto; height:.78em; color:var(--ink)}
+.foot .by a:hover,.foot .by a:hover .xndr{color:var(--key)}
+.prose p{max-width:40rem}
 `;
 
 const MARK_SVG = `<svg width="24" height="16" viewBox="0 0 24 16" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M3 1.5H13A2 2 0 0 0 17 1.5H21A1.5 1.5 0 0 1 22.5 3V13A1.5 1.5 0 0 1 21 14.5H17A2 2 0 0 0 13 14.5H3A1.5 1.5 0 0 1 1.5 13V3A1.5 1.5 0 0 1 3 1.5Z"/><path d="M15 5V11" stroke-dasharray="0 2.6"/></svg>`;
 const SRC = "https://github.com/mrcsXndr/agent-secret/blob/main/src/worker";
 const OG_ALT = "agent-secret: the link's key half never reaches the server";
+// XNDR's own pixel wordmark (xndr.io public/assets/logos), cropped to the letters, in currentColor.
+const XNDR_SVG = `<svg class="xndr" width="62" height="14" viewBox="52 44 248 56" fill="currentColor" role="img" aria-label="XNDR"><path d="M52 100V84H60V76H68V68H60V60H52V44H68V60H76V68H84V60H92V44H108V60H100V68H92V76H100V84H108V100H92V84H84V76H76V84H68V100H52Z"/><path d="M116 100V44H132V52H140V60H148V68H156V44H172V100H156V84H148V76H140V68H132V100H116Z"/><path d="M180 100V44H220V52H228V60H236V84H228V92H220V100H180ZM196 92H212V84H220V60H212V52H196V92Z"/><path d="M244 100V44H292V52H300V76H284V84H292V92H300V100H276V92H268V84H260V100H244ZM260 76H276V68H284V52H260V76Z"/></svg>`;
+
+// The FAQ is rendered on the page AND as FAQPage JSON-LD from this one list, so
+// the structured data always matches the visible text (a test checks it).
+export const FAQ: ReadonlyArray<{ q: string; a: string }> = [
+  {
+    q: "Can agent-secret read my secret?",
+    a: "No. Your browser encrypts the value before anything is sent, and the key stays in the part of the link after the #, which browsers and HTTP clients never transmit. The server stores ciphertext and a nonce. A full copy of its database would not decrypt anything.",
+  },
+  {
+    q: "What if someone opens the link before my agent does?",
+    a: "They get the secret, and your agent gets a 410 when it tries. Treat that as a leak: rotate the key and send a new link. Pick the shortest expiry that works, so the window stays small.",
+  },
+  {
+    q: "Will a link preview in Slack or Telegram burn the link?",
+    a: "No. Known preview bots, including Slack, Telegram, Discord, WhatsApp and LinkedIn, get a short note instead of the ciphertext and leave the secret in place. A crawler that is not on that list would burn it, though it still could not decrypt it.",
+  },
+  {
+    q: "Which agents can use it?",
+    a: "Any agent that can make an HTTP request and run AES-256-GCM. In practice that is anything with a shell and curl plus Node or Python, which covers Claude Code, Codex, Cursor and most self-hosted agents. The protocol is plain text at /how.",
+  },
+  {
+    q: "How long does a link last?",
+    a: "Between 5 minutes and 24 hours, chosen when you create it, and only until the first claim. After a claim the server keeps a small tombstone until the original expiry, so a second attempt gets a clear 410 rather than a confusing 404.",
+  },
+  {
+    q: "Is it free, and can I run my own?",
+    a: "It is free, needs no account and is MIT licensed. Your own copy is one Cloudflare Worker and one KV namespace, with no server secrets to configure. The README has the three commands.",
+  },
+];
+const FAQ_LD = JSON.stringify({
+  "@context": "https://schema.org",
+  "@type": "FAQPage",
+  mainEntity: FAQ.map(({ q, a }) => ({ "@type": "Question", name: q, acceptedAnswer: { "@type": "Answer", text: a } })),
+}).replace(/</g, "\\u003c");
 
 // Structured data for search engines. A data block, not a script: browsers never
 // execute it, so the hash-pinned script-src does not apply. {{origin}} is filled
@@ -306,6 +342,7 @@ export const FORM_HTML = `<!doctype html>
 <link rel="icon" href="/favicon.svg" type="image/svg+xml">
 <link rel="apple-touch-icon" href="/apple-touch-icon.png">
 <script type="application/ld+json">${JSON_LD}</script>
+<script type="application/ld+json">${FAQ_LD}</script>
 <style>${FORM_CSS}</style>
 </head>
 <body>
@@ -354,6 +391,27 @@ export const FORM_HTML = `<!doctype html>
       <button class="again" id="again" type="button">Share another secret</button>
     </div>
   </div>
+</section>
+
+<section id="why" class="prose" aria-labelledby="why-t">
+  <h2 id="why-t">What happens to a key you paste into an agent chat</h2>
+  <p>You paste <code>sk-live-…</code> into the chat, the agent writes it to <code>.env</code>, and the job looks done. The key, though, is now in a lot more places than <code>.env</code>.</p>
+
+  <h3>Where it ends up</h3>
+  <p>Most coding agents keep a transcript on disk. Claude Code, for example, writes every session to a JSONL file under <code>~/.claude/projects</code>, and those files sit there for weeks unless someone cleans them up. The key is in that file verbatim: once in the message you sent, and often again in the tool call that wrote it to disk.</p>
+  <p>It also went to the model provider as part of the prompt, and it rides along in the context for every turn that follows. Providers keep request logs for a retention period that depends on the provider and your plan. When a long session is compacted, the summary can carry the key into the next one. And if the agent confirms its work with a cheerful "Set OPENAI_API_KEY=sk-live-…", that is one more copy.</p>
+  <p>Then there is everything around the chat: terminal scrollback, a screen share, a synced folder where someone saved the transcript, a bug report with the log attached. None of these is a breach on its own. Together they mean a key you meant to put in one file now lives in six, and you can't list them all.</p>
+
+  <h3>What a one-time link changes</h3>
+  <p>agent-secret moves the value out of the conversation. You paste the secret into this page, your browser encrypts it with a fresh 256-bit AES key, and the server stores only the ciphertext. What you hand the agent is a link whose last part, after the <code>#</code>, is that key. Browsers, curl and fetch never send the fragment, so the server could not decrypt what it holds even if it wanted to.</p>
+  <p>The transcript still gets the link. The difference is what the link is worth afterwards. The first GET returns the ciphertext and replaces the record with a tombstone, so by the time anyone reads that transcript the link answers <code>410</code> and there is nothing behind it. A link nobody claims expires on its own, after anything from five minutes to a day.</p>
+
+  <h3>How your agent claims it</h3>
+  <p>The copy block is two lines: a short instruction and the link. The instruction points the agent at <a href="/how">/how</a>, a static plain-text page with the protocol. It never touches a stored secret, so the agent can read it as often as it likes. The agent then splits the link at <code>#</code>, makes one GET for the ciphertext, decrypts locally and writes the value to its environment or a gitignored <code>.env</code>. It should report back by name only: "saved OPENAI_API_KEY". The exact steps, response codes and copyable scripts are under <a href="#agents">For AI agents</a>.</p>
+
+  <h3>The threat model, in plain words</h3>
+  <p>Until it is claimed, the link is the secret. Anyone who sees it first can claim it, and your agent then gets a <code>410</code>. That failure is loud on purpose: when the claim fails, rotate the key.</p>
+  <p>The server can't read your secret, but it does see when a link was created and claimed, from which IP, and roughly how long the secret is. You also trust that the page you loaded is the page in the repository. Its one script is pinned by hash in the Content-Security-Policy so you can check it, or you can run your own copy. And the agent sees the plaintext, because it has to in order to use the key. This keeps the secret out of the transcript, not out of the agent's machine.</p>
 </section>
 
 <section id="how" aria-labelledby="how-t">
@@ -438,12 +496,28 @@ export const FORM_HTML = `<!doctype html>
   <pre class="code" id="snPy">${escapeHtml(SNIPPET_PY)}</pre>
   <p class="small">Both append to <code>.env</code> in the current directory and print only the name. Check that <code>.env</code> is gitignored. After the claim, the link left in the transcript is dead: the server no longer holds the ciphertext.</p>
 </section>
+
+<section id="compare" class="prose" aria-labelledby="compare-t">
+  <h2 id="compare-t">Where it fits next to the tools you already use</h2>
+  <p>agent-secret does one job: it gets a value from you to an agent once, without the value passing through the chat. It is not a place to keep secrets, and it doesn't try to be.</p>
+  <h3>Password managers</h3>
+  <p>1Password, Bitwarden and the like are where the key should live. Some can feed an agent directly; the 1Password CLI, for instance, injects secrets into a process with <code>op run</code>. If the agent's machine is already signed in, use that. The one-time link covers the gap: the agent runs on a server, in a container or on a colleague's laptop, and setting up a vault there for one key is more work than the key is worth.</p>
+  <h3><code>.env</code> files</h3>
+  <p>A gitignored <code>.env</code> is usually where the value ends up, and that is fine. The file was never the problem. The problem was how the value travelled to it. A one-time link replaces the copy and paste, not the file.</p>
+  <h3>Secret managers and vaults</h3>
+  <p>HashiCorp Vault, Doppler, Infisical and the cloud providers' secret managers handle rotation, access policies and audit logs for a team. That is the right home for production credentials. They assume the consumer can already authenticate to them, which an agent you started five minutes ago usually can't. Hand over the first token, or a short-lived one, with a link, and let the secret manager take it from there.</p>
+</section>
+
+<section id="faq" class="prose" aria-labelledby="faq-t">
+  <h2 id="faq-t">Questions</h2>
+${FAQ.map(({ q, a }) => `  <h3>${escapeHtml(q)}</h3>\n  <p>${escapeHtml(a)}</p>`).join("\n")}
+</section>
 </main>
 
 <footer class="foot">
   <p>Open source under the MIT license. <a href="https://github.com/mrcsXndr/agent-secret">Source on GitHub</a>.</p>
   <p>Found a security issue? <a href="https://github.com/mrcsXndr/agent-secret/security/advisories/new">Report it privately</a>.</p>
-  <p class="by"><a href="https://xndr.io">Powered by<b>XNDR</b></a></p>
+  <p class="by"><a href="https://xndr.io">Powered by ${XNDR_SVG}</a></p>
 </footer>
 </div>
 <script>${FORM_JS}</script>

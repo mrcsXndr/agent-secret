@@ -2,6 +2,20 @@
 
 All notable changes to this project. Versions follow [Semantic Versioning](https://semver.org/).
 
+## [1.2.0] - 2026-10-14
+
+The claim protocol is unchanged; links made with earlier versions claim the same way.
+
+### Added
+- `GET /how`: the agent protocol as plain text under a short URL (same text as `/llms.txt`). It is static, never reads KV and is outside the rate limit; `robots.txt` allows it with an anchored `Allow: /how$`.
+- Claim responses carry `Link: </how>; rel="help"`, so an agent that fetches the link first still finds the protocol.
+- Page content on why a key pasted into an agent chat spreads (transcripts, provider logs, compaction, echoes), how a one-time link changes that, the threat model in plain words, how it compares with password managers, `.env` files and secret managers, and an FAQ, also published as FAQPage JSON-LD generated from the same text.
+
+### Changed
+- The copy block is one short line plus the link: `NAME: one-time secret. Read <origin>/how, then claim the link below; it works once.` The fetch and decrypt instructions moved to `/how`.
+- New visual identity: blue-black ink on rose paper with a sealing-wax red key half, a condensed industrial display face (DIN on Apple, Bahnschrift on Windows, no web fonts), and the form panel cut like the ticket stub. Light theme only. Favicon, touch icon and `og.png` redrawn to match.
+- Footer: "Powered by XNDR" with the XNDR wordmark.
+
 ## [1.1.1] - 2026-10-07
 
 ### Changed

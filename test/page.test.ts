@@ -2,7 +2,7 @@ import { describe, it, expect } from "vitest";
 import { readFileSync } from "node:fs";
 import { createHash } from "node:crypto";
 import app from "../src/worker/app.js";
-import { FORM_HTML, FORM_JS } from "../src/worker/form.js";
+import { FAQ, FORM_HTML, FORM_JS } from "../src/worker/form.js";
 import { SNIPPET_PY, SNIPPET_SH } from "../src/worker/agent-docs.js";
 import { makeEnv } from "./helpers.js";
 
@@ -201,6 +201,19 @@ describe("SEO and public documents", () => {
     expect(ld.applicationCategory).toBe("DeveloperApplication");
     expect(ld.offers.price).toBe("0");
     expect(ld.codeRepository).toBe("https://github.com/mrcsXndr/agent-secret");
+  });
+
+  it("publishes FAQPage JSON-LD that matches the visible FAQ word for word", async () => {
+    const { html } = await page();
+    const blocks = [...html.matchAll(/<script type="application\/ld\+json">([\s\S]*?)<\/script>/g)].map((m) => JSON.parse(m[1]!));
+    const faq = blocks.find((b) => b["@type"] === "FAQPage");
+    expect(faq.mainEntity).toHaveLength(FAQ.length);
+    const section = /<section id="faq"[\s\S]*?<\/section>/.exec(html)![0];
+    const visible = [...section.matchAll(/<h3>([\s\S]*?)<\/h3>\s*<p>([\s\S]*?)<\/p>/g)].map((m) => ({ q: m[1], a: m[2] }));
+    const unescape = (s: string) => s.replace(/&#39;/g, "'").replace(/&quot;/g, '"').replace(/&lt;/g, "<").replace(/&gt;/g, ">").replace(/&amp;/g, "&");
+    expect(visible.map(({ q, a }) => ({ q: unescape(q!), a: unescape(a!) }))).toEqual(
+      faq.mainEntity.map((e: { name: string; acceptedAnswer: { text: string } }) => ({ q: e.name, a: e.acceptedAnswer.text })),
+    );
   });
 
   it("keeps a hostile Host from breaking the JSON-LD block", async () => {
